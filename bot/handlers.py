@@ -40,16 +40,16 @@ async def give_contacts(message: types.Message) -> None:
         reply_markup=keyboard_link,
     )
 
-@dp.message_handler(commands="chose strategy")
+@dp.message_handler(commands="chose_strategy")
 async def chose_strategy(message: types.Message) -> None:
     """ссылка на код проекта."""
     btn_link = types.InlineKeyboardButton(
-        text=button_texts["Ivan D"], url="https://github.com/gufin"
+        text=button_texts["ivand"], url="https://github.com/gufin"
     )
     keyboard_link = types.InlineKeyboardMarkup().add(btn_link)
     await bot.send_message(
         message.chat.id,
-        message_texts["github"],
+        message_texts["ivand"],
         reply_markup=keyboard_link,
     )
 
