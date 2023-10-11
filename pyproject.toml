@@ -1,0 +1,70 @@
+[tool.poetry]
+name = "telegram-bot-template"
+version = "0.1.0"
+description = "Template for telegram bot"
+authors = ["donBarbos <donbarbos@proton.me>"]
+license = "GPL-3.0-or-later"
+
+[tool.poetry.dependencies]
+python = "^3.7"
+aiogram = "^2.22"
+asyncpg = "^0.26.0"
+loguru = "^0.6.0"
+uvloop = "^0.17.0"
+python-dotenv = "^0.21.0"
+redis = "^4.5.5"
+
+[tool.poetry.dev-dependencies]
+pre-commit = "^2.20.0"
+black = "^22.10"
+isort = "^5.10.1"
+flake8 = "^4.0.1"
+flake8-bugbear = "^22.10.25"
+flake8-polyfill = "^1.0.2"
+flake8-quotes = "^3.3.1"
+flake8-variables-names = "^0.0.5"
+flake8-black = "^0.3.3"
+flake8-isort = "^5.0.0"
+pyflakes = "^2.4.0"
+pep8-naming = "^0.13.2"
+mypy = "^0.982"
+autoflake = "^1.7"
+pyupgrade = "^3.1.0"
+yesqa = "^1.4.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
+target_version = ["py37", "py38", "py39"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.venv
+  | \.env
+  | logs
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+src_paths = ["bot", "test"]
+include_trailing_comma = true
+force_alphabetical_sort = true
+lines_after_imports = 2
+line_length = 120
+
+[tool.pytest.ini_options]
+testpaths = "tests"
+
+[tool.mypy]
+python_version = "3.8"
+files = "bot/*.py"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true

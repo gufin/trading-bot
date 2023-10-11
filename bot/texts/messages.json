@@ -1,0 +1,11 @@
+{
+  "welcome": "Hello, I remember you.",
+  "about": "Bot is a template for future projects.",
+  "github": " the project code is available on Github.",
+  "settings": "Settings",
+  "address": "How should I address you?",
+  "language": "Choose language:",
+  "text": "Text processing can take place here.",
+  "format_error": "I don't know how to work with this format.",
+  "command_error": "Invalid command."
+}
