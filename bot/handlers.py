@@ -43,15 +43,44 @@ async def give_contacts(message: types.Message) -> None:
 @dp.message_handler(commands="chose_strategy")
 async def chose_strategy(message: types.Message) -> None:
     """ссылка на код проекта."""
-    btn_link = types.InlineKeyboardButton(
-        text=button_texts["ivand"], url="https://github.com/gufin"
-    )
-    keyboard_link = types.InlineKeyboardMarkup().add(btn_link)
+    strategies = await db.get_strategies()
+    keyboard_link = types.InlineKeyboardMarkup()
+    for strategy in strategies:
+        btn_command = types.InlineKeyboardButton(text=strategy[1], callback_data=f"strategy_{strategy[0]}")
+        keyboard_link.add(btn_command)
+
     await bot.send_message(
         message.chat.id,
-        message_texts["ivand"],
+        'Доступные стратегии',
         reply_markup=keyboard_link,
     )
+
+@dp.callback_query_handler(lambda c: c.data.startswith('strategy_'))
+async def process_strategy_button(callback_query: types.CallbackQuery):
+    strategy_id = callback_query.data[len('strategy_'):]
+    timeframes = await db.get_time_frames()
+    keyboard_link = types.InlineKeyboardMarkup()
+    for timeframe in timeframes:
+        btn_command = types.InlineKeyboardButton(text=timeframe[1], callback_data=f"timeframe_{timeframe[0]}_{strategy_id}")
+        keyboard_link.add(btn_command)
+
+    await bot.send_message(
+        callback_query.message.chat.id,
+        'Доступные временные окна',
+        reply_markup=keyboard_link,
+    )
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith('timeframe_'))
+async def process_strategy_button(callback_query: types.CallbackQuery):
+    data = callback_query.data[len('timeframe_'):].split('_')
+    await db.save_strategy(user_id=callback_query.from_user.id, strategy_id=data[1], timeframe_id=data[0])
+    await bot.send_message(
+        callback_query.message.chat.id,
+        'Введите тикеры через запятую.',
+    )
+
+
 
 @dp.message_handler(commands="settings")
 async def give_settings(message: types.Message) -> None:

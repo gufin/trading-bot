@@ -55,3 +55,16 @@ class Database:
 
     async def get_lang(self, user_id: int) -> str:
         return await self.pool.fetchval(f"SELECT lang FROM Users WHERE user_id={user_id}")
+
+    async def get_strategies(self):
+        response = await self.pool.fetch("SELECT strategy_id, name FROM strategy")
+        return response
+
+    async def get_time_frames(self):
+        response = await self.pool.fetch("SELECT timeframe_id, name FROM timeframes")
+        return response
+
+    async def save_strategy(self, user_id, strategy_id, timeframe_id):
+        await self.pool.execute(
+            f"INSERT INTO user_strategies (user_id, strategy_id, timeframe_id) VALUES ({user_id}, {strategy_id}, {timeframe_id})"
+        )
