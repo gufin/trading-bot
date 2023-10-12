@@ -22,3 +22,21 @@ CREATE TABLE IF NOT EXISTS user_strategies (
     strategy_id BIGINT REFERENCES strategy(strategy_id),
     timeframe_id BIGINT REFERENCES timeframes(timeframe_id)
 );
+
+CREATE TABLE IF NOT EXISTS tickers (
+    ticker_id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(64) NOT NULL
+);
+
+
+CREATE TABLE IF NOT EXISTS user_tickers (
+    user_tickers_id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT REFERENCES Users(user_id),
+    ticker_id BIGINT REFERENCES tickers(ticker_id)
+);
+
+-- ALTER TABLE tickers
+-- ADD CONSTRAINT unique_ticker_name UNIQUE (name);
+
+-- ALTER TABLE user_strategies
+-- ADD CONSTRAINT unique_user_strategy_timeframe UNIQUE (user_id, strategy_id, timeframe_id);

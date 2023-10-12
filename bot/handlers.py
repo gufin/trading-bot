@@ -77,7 +77,7 @@ async def process_strategy_button(callback_query: types.CallbackQuery):
     await db.save_strategy(user_id=callback_query.from_user.id, strategy_id=data[1], timeframe_id=data[0])
     await bot.send_message(
         callback_query.message.chat.id,
-        'Введите тикеры через запятую.',
+        'Введите тикеры через запятую. Пример ввода - tickers: APPL, AMZN, LKHM',
     )
 
 
@@ -107,7 +107,23 @@ async def alter_lang(callback_query: types.CallbackQuery) -> None:
 
 @dp.message_handler(content_types="text")
 async def text_handler(message: types.Message) -> None:
-    await bot.send_message(message.chat.id, message_texts["text"])
+    if 'tickers: ' in message.text:
+        clean_data = message.text.replace('tickers: ', '')
+        data = clean_data.split(',')
+        for ticker_raw in data:
+            ticker = ticker_raw.strip()
+            await db.add_ticker(ticker=ticker)
+            ticker_id = await db.get_ticker_id_by_name(ticker=ticker)
+            await db.add_user_ticker(user_id=message.from_user.id, ticker_id=ticker_id)
+        await bot.send_message(
+            message.chat.id,
+            'Тикеры добавлены, аби. Теперь жди топовых сигналов.',
+        )
+    else:
+        await bot.send_message(
+            message.chat.id,
+            'Не понимаю тебя, аби.',
+        )
 
 
 @dp.message_handler()

@@ -66,5 +66,21 @@ class Database:
 
     async def save_strategy(self, user_id, strategy_id, timeframe_id):
         await self.pool.execute(
-            f"INSERT INTO user_strategies (user_id, strategy_id, timeframe_id) VALUES ({user_id}, {strategy_id}, {timeframe_id})"
+            f"INSERT INTO user_strategies (user_id, strategy_id, timeframe_id) VALUES ({user_id}, {strategy_id}, {timeframe_id}) ON CONFLICT (user_id, strategy_id, timeframe_id) DO NOTHING"
         )
+
+    async def add_ticker(self, ticker):
+        query = f"INSERT INTO tickers (name) VALUES ('{ticker}') ON CONFLICT (name) DO NOTHING"
+        await self.pool.execute(query)
+
+    async def get_ticker_id_by_name(self, ticker):
+        query = f"SELECT ticker_id FROM tickers WHERE name = '{ticker}'"
+        result = await self.pool.fetchval(query)
+        return result
+
+    async def add_user_ticker(self, user_id, ticker_id):
+        query = f"INSERT INTO user_tickers (user_id, ticker_id) VALUES ({user_id}, {ticker_id})"
+        await self.pool.execute(query)
+
+
+
