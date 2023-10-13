@@ -77,7 +77,7 @@ async def process_strategy_button(callback_query: types.CallbackQuery):
     await db.save_strategy(user_id=callback_query.from_user.id, strategy_id=data[1], timeframe_id=data[0])
     await bot.send_message(
         callback_query.message.chat.id,
-        'Введите тикеры через запятую. Пример ввода - tickers: APPL, AMZN, LKHM',
+        'Введите тикеры через запятую. Пример ввода - tickers: AAPL, AMZN, GAZP',
     )
 
 

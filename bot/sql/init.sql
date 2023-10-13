@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS user_strategies (
 
 CREATE TABLE IF NOT EXISTS tickers (
     ticker_id BIGSERIAL PRIMARY KEY,
+    figi VARCHAR(64),
+    classCode VARCHAR(64),
+    currency  VARCHAR(64),
     name VARCHAR(64) NOT NULL
 );
 
@@ -37,6 +40,6 @@ CREATE TABLE IF NOT EXISTS user_tickers (
 
 -- ALTER TABLE tickers
 -- ADD CONSTRAINT unique_ticker_name UNIQUE (name);
-
+--
 -- ALTER TABLE user_strategies
 -- ADD CONSTRAINT unique_user_strategy_timeframe UNIQUE (user_id, strategy_id, timeframe_id);

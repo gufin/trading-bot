@@ -2,6 +2,8 @@ from asyncio import AbstractEventLoop
 from loguru import logger
 from typing import Optional
 
+from market_loader.models import Ticker
+
 import asyncpg
 
 
@@ -80,6 +82,19 @@ class Database:
 
     async def add_user_ticker(self, user_id, ticker_id):
         query = f"INSERT INTO user_tickers (user_id, ticker_id) VALUES ({user_id}, {ticker_id})"
+        await self.pool.execute(query)
+
+    async def get_tickers_without_figi(self) -> list[Ticker]:
+        query = f"SELECT * FROM tickers WHERE figi IS NULL"
+        results = await self.pool.fetch(query)
+        res = []
+        for result in results:
+            res.append(Ticker(ticker_id=result[0], name=result[4]))
+        return res
+
+
+    async def update_tickers(self, ticker_id, new_figi, new_classCode, new_currency):
+        query = f"UPDATE tickers SET figi = '{new_figi}', classCode = '{new_classCode}', currency = '{new_currency}' WHERE ticker_id = {ticker_id}"
         await self.pool.execute(query)
 
 

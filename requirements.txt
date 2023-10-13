@@ -23,3 +23,5 @@ typing-extensions==4.6.3 ; python_version >= "3.7" and python_version < "3.8"
 win32-setctime==1.1.0 ; python_version >= "3.7" and python_version < "4.0" and sys_platform == "win32"
 yarl==1.9.2 ; python_version >= "3.7" and python_version < "4.0"
 zipp==3.15.0 ; python_version >= "3.7" and python_version < "3.8"
+httpx
+pydantic

@@ -5,11 +5,11 @@ from dotenv import load_dotenv
 
 import asyncio
 import os
-import uvloop  # running only linux
+#import uvloop  # running only linux
 
 
 load_dotenv()
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+#asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 token = os.getenv("BOT_TOKEN")
 bot = Bot(token=token, parse_mode="html")
 loop = asyncio.get_event_loop()
