@@ -92,10 +92,20 @@ class Database:
             res.append(Ticker(ticker_id=result[0], name=result[4]))
         return res
 
+    async def get_tickers_with_figi(self) -> list[Ticker]:
+        query = f"SELECT * FROM tickers WHERE figi IS NOT NULL"
+        results = await self.pool.fetch(query)
+        res = []
+        for result in results:
+            res.append(Ticker(ticker_id=result[0], figi=result[1], classCode=result[2], currency=result[3], name=result[4]))
+        return res
 
     async def update_tickers(self, ticker_id, new_figi, new_classCode, new_currency):
         query = f"UPDATE tickers SET figi = '{new_figi}', classCode = '{new_classCode}', currency = '{new_currency}' WHERE ticker_id = {ticker_id}"
         await self.pool.execute(query)
 
-
-
+    async def add_candle(self, ticker_id, interval, timestamp, open, high, low, close):
+        query = f"INSERT INTO candles (ticker_id, interval, timestamp_column, open, high, low, close) " \
+                f"VALUES ({ticker_id}, '{interval}', '{timestamp}', {open}, {high}, {low}, {close}) " \
+                f"ON CONFLICT (ticker_id, interval, timestamp_column) DO NOTHING"
+        await self.pool.execute(query)

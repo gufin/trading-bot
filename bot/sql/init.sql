@@ -38,8 +38,21 @@ CREATE TABLE IF NOT EXISTS user_tickers (
     ticker_id BIGINT REFERENCES tickers(ticker_id)
 );
 
+CREATE TABLE IF NOT EXISTS candles (
+    candl_id BIGSERIAL PRIMARY KEY,
+    ticker_id BIGINT REFERENCES tickers(ticker_id),
+    interval VARCHAR(64),
+    timestamp_column TIMESTAMP,
+    open NUMERIC(10, 3),
+    high NUMERIC(10, 3),
+    low NUMERIC(10, 3),
+    close NUMERIC(10, 3)
+);
 -- ALTER TABLE tickers
 -- ADD CONSTRAINT unique_ticker_name UNIQUE (name);
 --
 -- ALTER TABLE user_strategies
 -- ADD CONSTRAINT unique_user_strategy_timeframe UNIQUE (user_id, strategy_id, timeframe_id);
+
+ALTER TABLE candles
+ADD CONSTRAINT unique_candle_combination UNIQUE (ticker_id, interval, timestamp_column);

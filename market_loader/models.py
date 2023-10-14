@@ -1,3 +1,5 @@
+from enum import Enum
+
 from pydantic import BaseModel
 
 
@@ -22,10 +24,26 @@ class Ticker(BaseModel):
     currency: str = None
     name: str
 
+
 class InstrumentRequest(BaseModel):
     id_type: str = "INSTRUMENT_ID_TYPE_TICKER"
     classCode: str
     id: str
+
+
+class CandleData(BaseModel):
+    figi: str
+    from_: str
+    to: str
+    interval: str
+    instrumentId: str
+
+
+class CandleInterval(Enum):
+    CANDLE_INTERVAL_5_MIN = 'CANDLE_INTERVAL_5_MIN'
+    CANDLE_INTERVAL_15_MIN = 'CANDLE_INTERVAL_15_MIN'
+    CANDLE_INTERVAL_HOUR = 'CANDLE_INTERVAL_HOUR'
+    CANDLE_INTERVAL_DAY = 'CANDLE_INTERVAL_DAY'
 
 
 
