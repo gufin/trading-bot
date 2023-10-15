@@ -1,8 +1,10 @@
-from datetime import datetime
+import asyncio
+from datetime import datetime, timedelta
 from datetime import timezone
 from http import HTTPStatus
 
 import httpx
+from loguru import logger
 
 from bot.database import Database
 from market_loader.models import ApiConfig, CandleInterval, FindInstrumentRequest, InstrumentRequest
@@ -11,10 +13,7 @@ from market_loader.models import ApiConfig, CandleInterval, FindInstrumentReques
 class MarketDataLoader:
 
     def __init__(self, db: Database, config: ApiConfig):
-        # current_time = datetime.now(timezone.utc)
-        date_string = '2023-10-12 11:49:20.205298+00:00'
-        date_format = '%Y-%m-%d %H:%M:%S.%f%z'
-        current_time = datetime.strptime(date_string, date_format)
+        current_time = datetime.now(timezone.utc)
         self.db = db
         self.config = config
         self.time_counter = 0
@@ -22,8 +21,35 @@ class MarketDataLoader:
         self.last_15_min_update = current_time
         self.last_hour_update = current_time
         self.last_day_update = current_time
+        self.last_request_time = current_time
+        self.instrument_query_counter = 0
+        self.market_query_counter = 0
+
+    async def request_with_count(self, client, url, headers, json, query_type):
+
+        current_time = datetime.now(timezone.utc)
+        time_difference = (current_time - self.last_request_time).total_seconds()
+
+        if time_difference >= 60:
+            self.instrument_query_counter = 0
+            self.market_query_counter = 0
+            self.last_request_time = current_time
+
+        if query_type == 'instrument':
+            self.instrument_query_counter += 1
+        else:
+            self.market_query_counter += 1
+
+        if self.instrument_query_counter == 99 or self.market_query_counter == 149:
+            logger.info("Достигли предела запросов в минуту")
+            await asyncio.sleep(60)
+            self.instrument_query_counter = 0
+            self.market_query_counter = 0
+
+        return await client.post(url, headers=headers, json=json)
 
     async def _update_tickers(self):
+        logger.info("Начали инициализацию тикеров")
         tickers = await self.db.get_tickers_without_figi()
         headers = {
             "Authorization": f"Bearer {self.config.token}"
@@ -32,26 +58,73 @@ class MarketDataLoader:
             for ticker in tickers:
                 data = FindInstrumentRequest(query=ticker.name)
                 url = f"{self.config.base_url}{self.config.find_instrument}"
-                response = await client.post(url, headers=headers, json=data.model_dump())
+                response = await self.request_with_count(client=client, url=url, headers=headers,
+                                                         json=data.model_dump(), query_type='instrument')
                 if response.status_code == HTTPStatus.OK:
                     response_data = response.json()
                     if len(response_data['instruments']) == 1:
                         ticker_data = response_data['instruments'][0]
                         share_url = f"{self.config.base_url}{self.config.share_by}"
                         share_request = InstrumentRequest(classCode=ticker_data['classCode'], id=ticker.name)
-                        share_response = await client.post(share_url, headers=headers, json=share_request.model_dump())
+                        share_response = await self.request_with_count(client=client, url=share_url, headers=headers,
+                                                                       json=share_request.model_dump(),
+                                                                       query_type='instrument')
                         if share_response.status_code == HTTPStatus.OK:
                             share_data = share_response.json()['instrument']
                             await self.db.update_tickers(ticker_id=ticker.ticker_id,
                                                          new_figi=ticker_data['figi'],
                                                          new_classCode=ticker_data['classCode'],
                                                          new_currency=share_data['currency'])
+                            logger.info(
+                                f"Начали получать исторические данные | тикер: {ticker.name}; id: {ticker.ticker_id}")
+                            await self.init_ticker_data(client, ticker_data['figi'], ticker.ticker_id)
+                            logger.info(
+                                f"Закончили получать исторические данные "
+                                f"| тикер: {ticker.name}; id: {ticker.ticker_id}")
+
                         else:
-                            print(f"Не доступен url {share_url}")
+                            logger.critical(f"Не доступен url {share_url}")
                     else:
-                        print(f"Введен не верный тикер {ticker.name}")
+                        logger.error(f"Введен не верный тикер {ticker.name}")
                 else:
-                    print(f"Не доступен url {url}")
+                    logger.critical(f"Не доступен url {url}")
+
+    async def init_ticker_data(self, client, figi, ticker_id):
+        current_time = self.last_update
+        four_weeks_ago = self.last_update - timedelta(weeks=4)
+        while current_time > four_weeks_ago:
+            start_of_day = current_time.replace(hour=0, minute=0, second=0, microsecond=999999)
+            end_of_day = current_time.replace(hour=23, minute=59, second=59, microsecond=999999)
+            response_data = await self.get_ticker_candles(client, figi, start_of_day, end_of_day,
+                                                          CandleInterval.CANDLE_INTERVAL_5_MIN)
+            if response_data:
+                await self.save_candles(response_data, ticker_id, CandleInterval.CANDLE_INTERVAL_5_MIN)
+            response_data = await self.get_ticker_candles(client, figi, start_of_day, end_of_day,
+                                                          CandleInterval.CANDLE_INTERVAL_15_MIN)
+            if response_data:
+                await self.save_candles(response_data, ticker_id, CandleInterval.CANDLE_INTERVAL_15_MIN)
+
+            current_time -= timedelta(days=1)
+
+        current_time = self.last_update
+        two_months_ago = self.last_update - timedelta(days=60)
+        while current_time > two_months_ago:
+            day_of_week = current_time.weekday()
+            start_of_week = (current_time - timedelta(days=day_of_week)).replace(hour=0, minute=0, second=0,
+                                                                                 microsecond=999999)
+            end_of_week = (start_of_week + timedelta(days=4)).replace(hour=23, minute=59, second=59,
+                                                                      microsecond=999999)
+            response_data = await self.get_ticker_candles(client, figi, start_of_week, end_of_week,
+                                                          CandleInterval.CANDLE_INTERVAL_HOUR)
+            if response_data:
+                await self.save_candles(response_data, ticker_id, CandleInterval.CANDLE_INTERVAL_HOUR)
+            current_time -= timedelta(weeks=1)
+
+        year_ago = (self.last_update - timedelta(days=365)).replace(hour=0, minute=0, second=0, microsecond=999999)
+        response_data = await self.get_ticker_candles(client, figi, year_ago, self.last_update,
+                                                      CandleInterval.CANDLE_INTERVAL_DAY)
+        if response_data:
+            await self.save_candles(response_data, ticker_id, CandleInterval.CANDLE_INTERVAL_DAY)
 
     @staticmethod
     def dict_to_float(num_dict):
@@ -65,11 +138,11 @@ class MarketDataLoader:
         return date.isoformat().replace('+00:00', '')[:-3] + 'Z'
 
     def update_last_updates(self, current_time_utc):
-        if (self.last_15_min_update - current_time_utc).seconds >= 900:
+        if (current_time_utc - self.last_15_min_update).total_seconds() >= 900:
             self.last_15_min_update = current_time_utc
-        if (self.last_hour_update - current_time_utc).seconds >= 3600:
+        if (current_time_utc - self.last_hour_update).total_seconds() >= 3600:
             self.last_hour_update = current_time_utc
-        if (self.last_day_update - current_time_utc).seconds >= 3600 * 24:
+        if (current_time_utc - self.last_day_update).total_seconds() >= 3600 * 24:
             self.last_day_update = current_time_utc
         self.last_update = current_time_utc
 
@@ -85,7 +158,8 @@ class MarketDataLoader:
             "instrumentId": figi
         }
         url = f"{self.config.base_url}{self.config.get_candles}"
-        response = await client.post(url, headers=headers, json=request)
+        response = await self.request_with_count(client=client, url=url, headers=headers, json=request,
+                                                 query_type='market')
         return response.json() if response.status_code == HTTPStatus.OK else None
 
     async def save_candles(self, response_data, ticker_id, interval: CandleInterval):
@@ -102,6 +176,7 @@ class MarketDataLoader:
 
     async def load_data(self):
         await self._update_tickers()
+        logger.info("Заверишили инициализацию тикеров")
         current_time_utc = datetime.now(timezone.utc)
         tickers = await self.db.get_tickers_with_figi()
 
@@ -112,26 +187,25 @@ class MarketDataLoader:
                 if response_data:
                     await self.save_candles(response_data, ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_5_MIN)
 
-                if (self.last_15_min_update - current_time_utc).seconds >= 900:
+                if (current_time_utc - self.last_15_min_update).total_seconds() >= 900:
                     response_data = await self.get_ticker_candles(client, ticker.figi, self.last_15_min_update,
                                                                   current_time_utc,
                                                                   CandleInterval.CANDLE_INTERVAL_15_MIN)
                     if response_data:
                         await self.save_candles(response_data, ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_15_MIN)
 
-                if (self.last_hour_update - current_time_utc).seconds >= 3600:
+                if (current_time_utc - self.last_hour_update).total_seconds() >= 3600:
                     response_data = await self.get_ticker_candles(client, ticker.figi, self.last_hour_update,
                                                                   current_time_utc,
                                                                   CandleInterval.CANDLE_INTERVAL_HOUR)
                     if response_data:
                         await self.save_candles(response_data, ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_HOUR)
 
-                if (self.last_day_update - current_time_utc).seconds >= 3600 * 24:
+                if (current_time_utc - self.last_day_update).total_seconds() >= 3600 * 24:
                     response_data = await self.get_ticker_candles(client, ticker.figi, self.last_day_update,
                                                                   current_time_utc,
                                                                   CandleInterval.CANDLE_INTERVAL_DAY)
                     if response_data:
                         await self.save_candles(response_data, ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_DAY)
-                    self.last_hour_update = current_time_utc
 
         self.update_last_updates(current_time_utc)

@@ -1,5 +1,6 @@
 import asyncio
 import os
+from loguru import logger
 
 from dotenv import load_dotenv
 
@@ -29,10 +30,18 @@ loader = MarketDataLoader(db=db, config=config)
 
 
 async def main():
+    logger.info("Загрзука началась")
     while True:
         await loader.load_data()
         await asyncio.sleep(300)
 
 
 if __name__ == "__main__":
+    logger.add(
+        "logs/debug.log",
+        level="DEBUG",
+        format="{time} | {level} | {module}:{function}:{line} | {message}",
+        rotation="30 KB",
+        compression="zip",
+    )
     loop.run_until_complete(main())
