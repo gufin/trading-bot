@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from bot.database import Database
 from market_loader.loader import MarketDataLoader
 from market_loader.models import ApiConfig
+from market_loader.technical_indicators_calculator import TechnicalIndicatorsCalculator
 
 load_dotenv()
 loop = asyncio.get_event_loop()
@@ -27,12 +28,14 @@ config.get_candles = "tinkoff.public.invest.api.contract.v1.MarketDataService/Ge
 config.find_instrument = "tinkoff.public.invest.api.contract.v1.InstrumentsService/FindInstrument"
 
 loader = MarketDataLoader(db=db, config=config)
+ti_calculator = TechnicalIndicatorsCalculator(db=db)
 
 
 async def main():
     logger.info("Загрзука началась")
     while True:
         await loader.load_data()
+        await ti_calculator.calculate()
         await asyncio.sleep(300)
 
 

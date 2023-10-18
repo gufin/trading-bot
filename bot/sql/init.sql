@@ -48,6 +48,24 @@ CREATE TABLE IF NOT EXISTS candles (
     low NUMERIC(10, 3),
     close NUMERIC(10, 3)
 );
+
+CREATE TABLE IF NOT EXISTS ema_to_calc (
+    ema_to_calc_id BIGSERIAL PRIMARY KEY,
+    interval VARCHAR(64),
+    span INT
+);
+
+CREATE TABLE IF NOT EXISTS ema (
+    ema_id BIGSERIAL PRIMARY KEY,
+    ticker_id BIGINT REFERENCES tickers(ticker_id),
+    interval VARCHAR(64),
+    span INT,
+    timestamp_column TIMESTAMP,
+    ema NUMERIC(10, 3),
+    UNIQUE (ticker_id, interval, span, timestamp_column)
+);
+
+
 -- ALTER TABLE tickers
 -- ADD CONSTRAINT unique_ticker_name UNIQUE (name);
 --

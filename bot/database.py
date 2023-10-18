@@ -1,8 +1,9 @@
 from asyncio import AbstractEventLoop
 from loguru import logger
 from typing import Optional
+import pandas as pd
 
-from market_loader.models import Ticker
+from market_loader.models import EmaToCalc, Ticker
 
 import asyncpg
 
@@ -109,3 +110,33 @@ class Database:
                 f"VALUES ({ticker_id}, '{interval}', '{timestamp}', {open}, {high}, {low}, {close}) " \
                 f"ON CONFLICT (ticker_id, interval, timestamp_column) DO NOTHING"
         await self.pool.execute(query)
+
+    async def get_ema_params_to_calc(self) -> list[EmaToCalc]:
+        query = f"SELECT interval, span FROM ema_to_calc"
+        results = await self.pool.fetch(query)
+        res = []
+        for result in results:
+            res.append(EmaToCalc(interval=result[0], span=result[1]))
+        return res
+
+    async def get_data_for_ema(self, ticker_id: int, interval: str):
+        query = """
+            SELECT timestamp_column, close
+            FROM candles
+            WHERE ticker_id = $1 AND interval = $2
+            ORDER BY timestamp_column
+            """
+        rows = await self.pool.fetch(query, ticker_id, interval)
+
+        # Преобразуем результаты в DataFrame
+        df = pd.DataFrame(rows, columns=['timestamp_column', 'close'])
+
+        return df
+
+    async def add_ema(self, ticker_id, interval, span, timestamp_column, ema_value):
+        query = """
+        INSERT INTO ema (ticker_id, interval, span, timestamp_column, ema) 
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (ticker_id, interval, span, timestamp_column) DO NOTHING
+        """
+        await self.pool.execute(query, ticker_id, interval, span, timestamp_column, ema_value)

@@ -24,6 +24,10 @@ class Ticker(BaseModel):
     currency: str = None
     name: str
 
+class EmaToCalc(BaseModel):
+    interval: str
+    span: int
+
 
 class InstrumentRequest(BaseModel):
     id_type: str = "INSTRUMENT_ID_TYPE_TICKER"
