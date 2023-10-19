@@ -5,7 +5,7 @@ import asyncpg
 import pandas as pd
 from loguru import logger
 
-from market_loader.models import EmaToCalc, Ticker, TickerToUpdateEma
+from market_loader.models import Candle, Ema, EmaToCalc, Ticker, TickerToUpdateEma
 
 
 class Database:
@@ -171,3 +171,90 @@ class Database:
         df = pd.DataFrame(rows, columns=['timestamp_column', 'close'])
 
         return df
+
+    async def get_last_two_candles_for_each_ticker(self, interval: str) -> dict[int, list[Candle]]:
+        query = """
+        WITH NumberedCandles AS (
+            SELECT 
+                ticker_id,
+                timestamp_column,
+                open,
+                high,
+                low,
+                close,
+                ROW_NUMBER() OVER(PARTITION BY ticker_id ORDER BY timestamp_column DESC) AS rn
+            FROM candles
+            WHERE interval = $1
+        )
+        SELECT 
+            ticker_id,
+            timestamp_column,
+            open,
+            high,
+            low,
+            close
+        FROM NumberedCandles
+        WHERE rn <= 2
+        ORDER BY ticker_id, timestamp_column DESC;
+        """
+        rows = await self.pool.fetch(query, interval)
+        candles_dict = {}
+
+        for row in rows:
+            candle = Candle(
+                timestamp_column=str(row['timestamp_column']),
+                open=row['open'],
+                high=row['high'],
+                low=row['low'],
+                close=row['close']
+            )
+            if row['ticker_id'] in candles_dict:
+                candles_dict[row['ticker_id']].append(candle)
+            else:
+                candles_dict[row['ticker_id']] = [candle]
+
+        return candles_dict
+
+    async def get_latest_ema_for_ticker(self, ticker_id: int, interval: str) -> Optional[Ema]:
+        query = """
+        SELECT 
+            timestamp_column,
+            span,
+            ema
+        FROM ema
+        WHERE ticker_id = $1 AND interval = $2
+        ORDER BY timestamp_column DESC
+        LIMIT 1;
+        """
+        row = await self.pool.fetchrow(query, ticker_id, interval)
+
+        if row:
+            return Ema(
+                timestamp_column=str(row['timestamp_column']),
+                span=row['span'],
+                ema=row['ema']
+            )
+        return None
+
+    async def get_users_for_ticker(self, ticker_id: int) -> list[int]:
+        query = """
+        SELECT 
+            user_id
+        FROM user_tickers
+        WHERE ticker_id = $1;
+        """
+        rows = await self.pool.fetch(query, ticker_id)
+
+        return [row['user_id'] for row in rows]
+
+    async def get_ticker_name_by_id(self, ticker_id: int):
+        query = """
+            SELECT name
+            FROM tickers
+            WHERE ticker_id = $1;
+        """
+        row = await self.pool.fetchrow(query, ticker_id)
+        if not row:
+            return None  # или можно вернуть какое-либо исключение
+        return row[0]
+

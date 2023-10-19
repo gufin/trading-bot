@@ -1,12 +1,13 @@
 import asyncio
 import os
-from loguru import logger
 
 from dotenv import load_dotenv
+from loguru import logger
 
 from bot.database import Database
 from market_loader.loader import MarketDataLoader
 from market_loader.models import ApiConfig
+from market_loader.strategy_evaluator import StrategyEvaluator
 from market_loader.technical_indicators_calculator import TechnicalIndicatorsCalculator
 
 load_dotenv()
@@ -29,13 +30,15 @@ config.find_instrument = "tinkoff.public.invest.api.contract.v1.InstrumentsServi
 
 loader = MarketDataLoader(db=db, config=config)
 ti_calculator = TechnicalIndicatorsCalculator(db=db)
+strategy_evaluator = StrategyEvaluator(db=db, token=os.getenv("BOT_TOKEN"), chat_id=os.getenv("DEBUG_CHAT_ID"))
 
 
 async def main():
-    logger.info("Загрзука началась")
+    logger.info("Загрузка началась")
     while True:
-        await loader.load_data()
-        await ti_calculator.calculate()
+        #await loader.load_data()
+        #await ti_calculator.calculate()
+        await strategy_evaluator.check_strategy()
         await asyncio.sleep(300)
 
 
