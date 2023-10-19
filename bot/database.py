@@ -1,22 +1,22 @@
 from asyncio import AbstractEventLoop
-from loguru import logger
 from typing import Optional
-import pandas as pd
-
-from market_loader.models import EmaToCalc, Ticker
 
 import asyncpg
+import pandas as pd
+from loguru import logger
+
+from market_loader.models import EmaToCalc, Ticker, TickerToUpdateEma
 
 
 class Database:
     def __init__(
-        self,
-        name: Optional[str],
-        user: Optional[str],
-        password: Optional[str],
-        host: Optional[str],
-        port: Optional[str],
-        loop: AbstractEventLoop,
+            self,
+            name: Optional[str],
+            user: Optional[str],
+            password: Optional[str],
+            host: Optional[str],
+            port: Optional[str],
+            loop: AbstractEventLoop,
     ) -> None:
         self.name = name
         self.user = user
@@ -98,7 +98,8 @@ class Database:
         results = await self.pool.fetch(query)
         res = []
         for result in results:
-            res.append(Ticker(ticker_id=result[0], figi=result[1], classCode=result[2], currency=result[3], name=result[4]))
+            res.append(
+                Ticker(ticker_id=result[0], figi=result[1], classCode=result[2], currency=result[3], name=result[4]))
         return res
 
     async def update_tickers(self, ticker_id, new_figi, new_classCode, new_currency):
@@ -119,7 +120,7 @@ class Database:
             res.append(EmaToCalc(interval=result[0], span=result[1]))
         return res
 
-    async def get_data_for_ema(self, ticker_id: int, interval: str):
+    async def get_data_for_init_ema(self, ticker_id: int, interval: str):
         query = """
             SELECT timestamp_column, close
             FROM candles
@@ -140,3 +141,33 @@ class Database:
         ON CONFLICT (ticker_id, interval, span, timestamp_column) DO NOTHING
         """
         await self.pool.execute(query, ticker_id, interval, span, timestamp_column, ema_value)
+
+    async def get_tickers_to_init_ema(self) -> list[TickerToUpdateEma]:
+        query = """
+            SELECT t.ticker_id, t.name, etc.interval, etc.span
+            FROM tickers t
+            CROSS JOIN ema_to_calc etc
+            LEFT JOIN ema e ON t.ticker_id = e.ticker_id AND etc.interval = e.interval AND etc.span = e.span
+            WHERE e.ema_id IS NULL AND t.figi IS NOT NULL AND t.figi <> '';
+        """
+        results = await self.pool.fetch(query)
+        res = []
+        for result in results:
+            res.append(
+                TickerToUpdateEma(ticker_id=result[0], name=result[1], interval=result[2], span=result[3]))
+        return res
+
+    async def get_data_for_ema(self, ticker_id, interval, span) -> list[TickerToUpdateEma]:
+        query = """
+               SELECT timestamp_column, close 
+               FROM candles 
+               WHERE ticker_id = $1 AND interval = $2 
+               ORDER BY timestamp_column DESC 
+               LIMIT $3;
+               """
+        rows = await self.pool.fetch(query, ticker_id, interval, span * 2)
+
+        # Преобразуем результаты в DataFrame
+        df = pd.DataFrame(rows, columns=['timestamp_column', 'close'])
+
+        return df

@@ -24,6 +24,14 @@ class Ticker(BaseModel):
     currency: str = None
     name: str
 
+
+class TickerToUpdateEma(BaseModel):
+    ticker_id: int
+    name: str
+    interval: str
+    span: int
+
+
 class EmaToCalc(BaseModel):
     interval: str
     span: int

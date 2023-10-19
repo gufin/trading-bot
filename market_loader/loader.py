@@ -7,7 +7,7 @@ import httpx
 from loguru import logger
 
 from bot.database import Database
-from market_loader.models import ApiConfig, CandleInterval, FindInstrumentRequest, InstrumentRequest
+from market_loader.models import ApiConfig, CandleInterval, FindInstrumentRequest, InstrumentRequest, Ticker
 
 
 class MarketDataLoader:
@@ -174,6 +174,14 @@ class MarketDataLoader:
                                          self.dict_to_float(candle['close']),
                                          )
 
+    async def load_and_save_ticker_interval(self, client, ticker: Ticker, interval: CandleInterval, start_time,
+                                            end_time):
+        logger.info(f"Загрузка | интервал: {interval}; тикер: {ticker.name}; id: {ticker.ticker_id}")
+        response_data = await self.get_ticker_candles(client, ticker.figi, start_time, end_time, interval)
+        if response_data:
+            logger.info(f"Запись | интервал: {interval}; тикер: {ticker.name}; id: {ticker.ticker_id}")
+            await self.save_candles(response_data, ticker.ticker_id, interval)
+
     async def load_data(self):
         await self._update_tickers()
         logger.info("Заверишили инициализацию тикеров")
@@ -182,30 +190,31 @@ class MarketDataLoader:
 
         async with httpx.AsyncClient() as client:
             for ticker in tickers:
-                response_data = await self.get_ticker_candles(client, ticker.figi, self.last_update, current_time_utc,
-                                                              CandleInterval.CANDLE_INTERVAL_5_MIN)
-                if response_data:
-                    await self.save_candles(response_data, ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_5_MIN)
+                await self.load_and_save_ticker_interval(client=client,
+                                                         ticker=ticker,
+                                                         interval=CandleInterval.CANDLE_INTERVAL_5_MIN,
+                                                         start_time=self.last_update,
+                                                         end_time=current_time_utc)
 
                 if (current_time_utc - self.last_15_min_update).total_seconds() >= 900:
-                    response_data = await self.get_ticker_candles(client, ticker.figi, self.last_15_min_update,
-                                                                  current_time_utc,
-                                                                  CandleInterval.CANDLE_INTERVAL_15_MIN)
-                    if response_data:
-                        await self.save_candles(response_data, ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_15_MIN)
+                    await self.load_and_save_ticker_interval(client=client,
+                                                             ticker=ticker,
+                                                             interval=CandleInterval.CANDLE_INTERVAL_15_MIN,
+                                                             start_time=self.last_15_min_update,
+                                                             end_time=current_time_utc)
 
                 if (current_time_utc - self.last_hour_update).total_seconds() >= 3600:
-                    response_data = await self.get_ticker_candles(client, ticker.figi, self.last_hour_update,
-                                                                  current_time_utc,
-                                                                  CandleInterval.CANDLE_INTERVAL_HOUR)
-                    if response_data:
-                        await self.save_candles(response_data, ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_HOUR)
+                    await self.load_and_save_ticker_interval(client=client,
+                                                             ticker=ticker,
+                                                             interval=CandleInterval.CANDLE_INTERVAL_HOUR,
+                                                             start_time=self.last_hour_update,
+                                                             end_time=current_time_utc)
 
                 if (current_time_utc - self.last_day_update).total_seconds() >= 3600 * 24:
-                    response_data = await self.get_ticker_candles(client, ticker.figi, self.last_day_update,
-                                                                  current_time_utc,
-                                                                  CandleInterval.CANDLE_INTERVAL_DAY)
-                    if response_data:
-                        await self.save_candles(response_data, ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_DAY)
+                    await self.load_and_save_ticker_interval(client=client,
+                                                             ticker=ticker,
+                                                             interval=CandleInterval.CANDLE_INTERVAL_DAY,
+                                                             start_time=self.last_day_update,
+                                                             end_time=current_time_utc)
 
         self.update_last_updates(current_time_utc)
