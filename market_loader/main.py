@@ -36,9 +36,9 @@ strategy_evaluator = StrategyEvaluator(db=db, token=os.getenv("BOT_TOKEN"), chat
 async def main():
     logger.info("Загрузка началась")
     while True:
-        #await loader.load_data()
-        #await ti_calculator.calculate()
-        await strategy_evaluator.check_strategy()
+        await loader.load_data()
+        await ti_calculator.calculate()
+        #await strategy_evaluator.check_strategy()
         await asyncio.sleep(300)
 
 

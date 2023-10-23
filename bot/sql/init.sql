@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS tickers (
     figi VARCHAR(64),
     classCode VARCHAR(64),
     currency  VARCHAR(64),
-    name VARCHAR(64) NOT NULL
+    name VARCHAR(64) NOT NULL,
+    disable BOOLEAN DEFAULT FALSE
 );
 
 

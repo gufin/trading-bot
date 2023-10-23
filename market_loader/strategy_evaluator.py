@@ -1,6 +1,10 @@
+import asyncio
 from datetime import datetime, timezone
 
 import httpx
+import pytz
+from loguru import logger
+from tzlocal import get_localzone
 
 from bot.database import Database
 from market_loader.models import CandleInterval
@@ -24,9 +28,26 @@ class StrategyEvaluator:
             "chat_id": self.chat_id,
             "text": text
         }
-
         async with httpx.AsyncClient() as client:
-            response = await client.post(base_url, data=payload)
+            attempts = 0
+            while attempts < 10:
+                try:
+                    await client.post(base_url, data=payload)
+                except Exception as e:
+                    attempts += 1
+                    logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
+                    await asyncio.sleep(10)
+
+    @staticmethod
+    def convert_utc_to_local(utc_str):
+        # Создайте объект datetime из строки, предполагая, что она в UTC
+        utc_time = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
+        utc_time = pytz.utc.localize(utc_time)
+
+        # Получите текущий временной пояс
+        local_tz = get_localzone()
+
+        return utc_time.astimezone(local_tz)
 
     @staticmethod
     def get_interval(interval):
@@ -59,18 +80,22 @@ class StrategyEvaluator:
             return True
 
     async def check_strategy(self):
+        logger.info("Начали проверку стратегии")
         current_time = datetime.now(timezone.utc)
-        intervals = ['CANDLE_INTERVAL_5_MIN', 'CANDLE_INTERVAL_15_MIN', 'CANDLE_INTERVAL_HOUR', 'CANDLE_INTERVAL_DAY']
+        intervals = ['CANDLE_INTERVAL_5_MIN']
         for interval in intervals:
             if self.need_for_calculation(interval, current_time):
-                candels = await self.db.get_last_two_candles_for_each_ticker(interval)
-                for ticker_id in candels:
-                    ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval)
-                    candel1 = candels[ticker_id][1]
-                    candel2 = candels[ticker_id][0]
-                    if candel1.low > ema.ema and (candel2.low <= ema.ema):
+                candles = await self.db.get_last_two_candles_for_each_ticker(interval)
+                for ticker_id in candles:
+                    ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval, 200)
+                    candl1 = candles[ticker_id][1]
+                    candl2 = candles[ticker_id][0]
+                    if ema and candl1.low > ema.ema and (candl2.low <= ema.ema):
                         # users_id = await self.db.get_users_for_ticker(ticker_id)
                         ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
-                        messege = f'Тикер {ticker_name} пересек EMA {int(ema.span)} в интервале ' \
-                                  f'{self.get_interval(interval)}. Покупайте, милорд.'
-                        await self.send_telegram_message(messege)
+                        message = (f'Тикер {ticker_name} пересек EMA {int(ema.span)} ({ema.ema}) в интервале '
+                                   f'{self.get_interval(interval)}. '
+                                   f'Время {self.convert_utc_to_local(ema.timestamp_column)}. Покупайте, милорд.')
+                        await self.send_telegram_message(message)
+                        logger.info(f"Сигнал. {message}")
+        logger.info("Завершили проверку стратегии")

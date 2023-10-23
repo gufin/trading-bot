@@ -1,11 +1,12 @@
 from asyncio import AbstractEventLoop
+from datetime import timedelta, timezone
 from typing import Optional
-
+from datetime import datetime
 import asyncpg
 import pandas as pd
 from loguru import logger
 
-from market_loader.models import Candle, Ema, EmaToCalc, Ticker, TickerToUpdateEma
+from market_loader.models import Candle, CandleInterval, Ema, EmaToCalc, Ticker, TickerToUpdateEma
 
 
 class Database:
@@ -94,7 +95,7 @@ class Database:
         return res
 
     async def get_tickers_with_figi(self) -> list[Ticker]:
-        query = f"SELECT * FROM tickers WHERE figi IS NOT NULL"
+        query = f"SELECT * FROM tickers WHERE figi IS NOT NULL AND NOT disable"
         results = await self.pool.fetch(query)
         res = []
         for result in results:
@@ -102,9 +103,26 @@ class Database:
                 Ticker(ticker_id=result[0], figi=result[1], classCode=result[2], currency=result[3], name=result[4]))
         return res
 
-    async def update_tickers(self, ticker_id, new_figi, new_classCode, new_currency):
-        query = f"UPDATE tickers SET figi = '{new_figi}', classCode = '{new_classCode}', currency = '{new_currency}' WHERE ticker_id = {ticker_id}"
-        await self.pool.execute(query)
+    async def update_tickers(self, ticker_id, new_figi, new_classCode, new_currency) -> Optional[Ticker]:
+        query = f"""
+            UPDATE tickers 
+            SET figi = $1, classCode = $2, currency = $3
+            WHERE ticker_id = $4
+            RETURNING ticker_id, figi, classCode, currency, name;
+        """
+        row = await self.pool.fetchrow(query, new_figi, new_classCode, new_currency, ticker_id)
+
+        if not row:
+            return None  # или можно вернуть какое-либо исключение
+
+        # Возвращаем модель Ticker на основе результата
+        return Ticker(
+            ticker_id=row['ticker_id'],
+            figi=row['figi'],
+            classCode=row['classcode'],
+            currency=row['currency'],
+            name=row['name']
+        )
 
     async def add_candle(self, ticker_id, interval, timestamp, open, high, low, close):
         query = f"INSERT INTO candles (ticker_id, interval, timestamp_column, open, high, low, close) " \
@@ -148,7 +166,7 @@ class Database:
             FROM tickers t
             CROSS JOIN ema_to_calc etc
             LEFT JOIN ema e ON t.ticker_id = e.ticker_id AND etc.interval = e.interval AND etc.span = e.span
-            WHERE e.ema_id IS NULL AND t.figi IS NOT NULL AND t.figi <> '';
+            WHERE e.ema_id IS NULL AND t.figi IS NOT NULL AND t.figi <> '' AND NOT t.disable;
         """
         results = await self.pool.fetch(query)
         res = []
@@ -159,11 +177,14 @@ class Database:
 
     async def get_data_for_ema(self, ticker_id, interval, span) -> list[TickerToUpdateEma]:
         query = """
-               SELECT timestamp_column, close 
-               FROM candles 
-               WHERE ticker_id = $1 AND interval = $2 
-               ORDER BY timestamp_column DESC 
-               LIMIT $3;
+               SELECT * FROM (
+                SELECT timestamp_column, close 
+                FROM candles 
+                WHERE ticker_id = $1 AND interval = $2 
+                ORDER BY timestamp_column DESC 
+                LIMIT $3
+            ) AS subquery
+            ORDER BY subquery.timestamp_column ASC;
                """
         rows = await self.pool.fetch(query, ticker_id, interval, span * 2)
 
@@ -215,18 +236,18 @@ class Database:
 
         return candles_dict
 
-    async def get_latest_ema_for_ticker(self, ticker_id: int, interval: str) -> Optional[Ema]:
+    async def get_latest_ema_for_ticker(self, ticker_id: int, interval: str, span) -> Optional[Ema]:
         query = """
         SELECT 
             timestamp_column,
             span,
             ema
         FROM ema
-        WHERE ticker_id = $1 AND interval = $2
+        WHERE ticker_id = $1 AND interval = $2 AND span = $3
         ORDER BY timestamp_column DESC
         LIMIT 1;
         """
-        row = await self.pool.fetchrow(query, ticker_id, interval)
+        row = await self.pool.fetchrow(query, ticker_id, interval, span)
 
         if row:
             return Ema(
@@ -258,3 +279,15 @@ class Database:
             return None  # или можно вернуть какое-либо исключение
         return row[0]
 
+    async def get_last_timestamp_by_interval_and_ticker(self, ticker_id: int, interval: CandleInterval):
+        query = """
+            SELECT timestamp_column
+            FROM candles
+            WHERE ticker_id = $1 AND interval = $2
+            ORDER BY timestamp_column DESC
+            LIMIT 1;
+        """
+        row = await self.pool.fetchrow(query, ticker_id, interval.value)
+        if not row:
+            return datetime.now(timezone.utc) - timedelta(days=60)  # или можно вернуть какое-либо исключение
+        return row[0].replace(tzinfo=timezone.utc, microsecond=999999)
