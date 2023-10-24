@@ -85,7 +85,8 @@ class MarketDataLoader:
                                                          json=data.model_dump(), query_type='instrument')
                 if response.status_code == HTTPStatus.OK:
                     response_data = response.json()
-                    ticker_data = next((item for item in response_data['instruments'] if item["ticker"] == ticker.name), None)
+                    ticker_data = next(
+                        (item for item in response_data['instruments'] if item["ticker"] == ticker.name), None)
                     if ticker_data is not None:
                         share_url = f"{self.config.base_url}{self.config.share_by}"
                         share_request = InstrumentRequest(classCode=ticker_data['classCode'], id=ticker.name)
@@ -191,28 +192,31 @@ class MarketDataLoader:
                                                  query_type='market')
         return response.json() if response.status_code == HTTPStatus.OK else None
 
-    async def save_candles(self, response_data, ticker_id, interval: CandleInterval):
+    async def save_candles(self, response_data, ticker: Ticker, interval: CandleInterval):
+        if len(response_data['candles']) > 0:
+            logger.info(
+                f"Запись | интервал: {self.get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}")
         for candle in response_data['candles']:
-            if candle['isComplete']:
-                await self.db.add_candle(ticker_id,
-                                         interval.value,
-                                         candle['time'],
-                                         self.dict_to_float(candle['open']),
-                                         self.dict_to_float(candle['high']),
-                                         self.dict_to_float(candle['low']),
-                                         self.dict_to_float(candle['close']),
-                                         )
+            await self.db.add_candle(ticker.ticker_id,
+                                     interval.value,
+                                     candle['time'],
+                                     self.dict_to_float(candle['open']),
+                                     self.dict_to_float(candle['high']),
+                                     self.dict_to_float(candle['low']),
+                                     self.dict_to_float(candle['close']),
+                                     )
 
     async def load_and_save_ticker_interval(self, client, ticker: Ticker, interval: CandleInterval, start_time,
                                             end_time):
-        logger.info(f"Загрузка | интервал: {self.get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}")
+        logger.info(
+            f"Загрузка | интервал: {self.get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}")
         response_data = await self.get_ticker_candles(client, ticker.figi, start_time, end_time, interval)
         if response_data:
-            logger.info(f"Запись | интервал: {self.get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}")
             if 'candles' in response_data:
-                await self.save_candles(response_data, ticker.ticker_id, interval)
+                await self.save_candles(response_data, ticker, interval)
             else:
-                logger.error(f"Ошибка записи свечей | интервал: {self.get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}; время с {end_time} по {start_time}")
+                logger.error(
+                    f"Ошибка записи свечей | интервал: {self.get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}; время с {end_time} по {start_time}")
 
     async def load_data(self):
         await self._update_tickers()
@@ -222,10 +226,12 @@ class MarketDataLoader:
 
         async with httpx.AsyncClient() as client:
             for ticker in tickers:
-                last_5_min_update = await self.db.get_last_timestamp_by_interval_and_ticker(ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_5_MIN)
+                last_5_min_update = await self.db.get_last_timestamp_by_interval_and_ticker(ticker.ticker_id,
+                                                                                            CandleInterval.CANDLE_INTERVAL_5_MIN)
                 time_difference = datetime.now(timezone.utc) - last_5_min_update
                 if time_difference > timedelta(days=1):
-                    await self.minute_ticker_data(client, ticker, datetime.now(timezone.utc), last_5_min_update, CandleInterval.CANDLE_INTERVAL_5_MIN)
+                    await self.minute_ticker_data(client, ticker, datetime.now(timezone.utc), last_5_min_update,
+                                                  CandleInterval.CANDLE_INTERVAL_5_MIN)
                 else:
                     await self.load_and_save_ticker_interval(client=client,
                                                              ticker=ticker,
@@ -233,7 +239,8 @@ class MarketDataLoader:
                                                              start_time=last_5_min_update,
                                                              end_time=self.round_date(datetime.now(timezone.utc)))
 
-                last_15_min_update = await self.db.get_last_timestamp_by_interval_and_ticker(ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_15_MIN)
+                last_15_min_update = await self.db.get_last_timestamp_by_interval_and_ticker(ticker.ticker_id,
+                                                                                             CandleInterval.CANDLE_INTERVAL_15_MIN)
                 if (datetime.now(timezone.utc) - last_15_min_update).total_seconds() >= 3600 * 24:
                     await self.minute_ticker_data(client, ticker, datetime.now(timezone.utc), last_15_min_update,
                                                   CandleInterval.CANDLE_INTERVAL_5_MIN)
@@ -244,7 +251,8 @@ class MarketDataLoader:
                                                              start_time=last_15_min_update,
                                                              end_time=datetime.now(timezone.utc))
 
-                last_hour_update = await self.db.get_last_timestamp_by_interval_and_ticker(ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_HOUR)
+                last_hour_update = await self.db.get_last_timestamp_by_interval_and_ticker(ticker.ticker_id,
+                                                                                           CandleInterval.CANDLE_INTERVAL_HOUR)
                 if (datetime.now(timezone.utc) - last_hour_update).total_seconds() >= 3600 * 24 * 7:
                     await self.hour_ticker_data(client, ticker, datetime.now(timezone.utc), last_hour_update)
                 elif (datetime.now(timezone.utc) - last_hour_update).total_seconds() >= 3600:
@@ -254,7 +262,8 @@ class MarketDataLoader:
                                                              start_time=last_hour_update,
                                                              end_time=datetime.now(timezone.utc))
 
-                last_day_update = await self.db.get_last_timestamp_by_interval_and_ticker(ticker.ticker_id, CandleInterval.CANDLE_INTERVAL_DAY)
+                last_day_update = await self.db.get_last_timestamp_by_interval_and_ticker(ticker.ticker_id,
+                                                                                          CandleInterval.CANDLE_INTERVAL_DAY)
                 if (datetime.now(timezone.utc) - last_day_update).total_seconds() >= 3600 * 24:
                     await self.load_and_save_ticker_interval(client=client,
                                                              ticker=ticker,

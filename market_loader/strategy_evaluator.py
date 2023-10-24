@@ -33,6 +33,7 @@ class StrategyEvaluator:
             while attempts < 10:
                 try:
                     await client.post(base_url, data=payload)
+                    break
                 except Exception as e:
                     attempts += 1
                     logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
@@ -93,9 +94,11 @@ class StrategyEvaluator:
                     if ema and candl1.low > ema.ema and (candl2.low <= ema.ema):
                         # users_id = await self.db.get_users_for_ticker(ticker_id)
                         ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
-                        message = (f'Тикер {ticker_name} пересек EMA {int(ema.span)} ({ema.ema}) в интервале '
+                        message = (f'{ticker_name} пересек EMA {int(ema.span)} ({ema.ema}) в интервале '
                                    f'{self.get_interval(interval)}. '
-                                   f'Время {self.convert_utc_to_local(ema.timestamp_column)}. Покупайте, милорд.')
+                                   f'Время {self.convert_utc_to_local(ema.timestamp_column)}. '
+                                   f'low свечи {candl2.low} время свечи {self.convert_utc_to_local(candl2.timestamp_column)}'
+                                   f'low предыдущей свечи {candl1.low} время свечи {self.convert_utc_to_local(candl1.timestamp_column)}')
                         await self.send_telegram_message(message)
                         logger.info(f"Сигнал. {message}")
         logger.info("Завершили проверку стратегии")
