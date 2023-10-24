@@ -52,10 +52,10 @@ class CandleData(BaseModel):
 
 
 class CandleInterval(Enum):
-    CANDLE_INTERVAL_5_MIN = 'CANDLE_INTERVAL_5_MIN'
-    CANDLE_INTERVAL_15_MIN = 'CANDLE_INTERVAL_15_MIN'
-    CANDLE_INTERVAL_HOUR = 'CANDLE_INTERVAL_HOUR'
-    CANDLE_INTERVAL_DAY = 'CANDLE_INTERVAL_DAY'
+    min_5 = 'CANDLE_INTERVAL_5_MIN'
+    min_15 = 'CANDLE_INTERVAL_15_MIN'
+    hour = 'CANDLE_INTERVAL_HOUR'
+    day = 'CANDLE_INTERVAL_DAY'
 
 
 class Candle(BaseModel):
@@ -71,7 +71,3 @@ class Ema(BaseModel):
     span: float
     ema: float
     atr: float
-
-
-
-
