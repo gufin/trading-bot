@@ -70,6 +70,7 @@ class Ema(BaseModel):
     timestamp_column: str
     span: float
     ema: float
+    atr: float
 
 
 

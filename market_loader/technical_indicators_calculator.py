@@ -1,5 +1,6 @@
 from datetime import datetime
 from datetime import timezone
+import talib
 
 from loguru import logger
 
@@ -18,12 +19,14 @@ class TechnicalIndicatorsCalculator:
 
     async def save_data_frame(self, df, ticker_id, interval, span):
         df['ema'] = df['close'].ewm(span=span, adjust=False).mean()
+        df['atr'] = talib.ATR(df['high'], df['low'], df['close'], timeperiod=14)
         for index, row in df.iterrows():
             await self.db.add_ema(ticker_id=ticker_id,
                                   interval=interval,
                                   span=span,
-                                  timestamp_column=row.iloc[0],
-                                  ema_value=row.iloc[2])
+                                  timestamp_column=row['timestamp_column'],
+                                  ema_value=row['ema'],
+                                  atr=row['atr'])
 
     def need_for_calculation(self, interval, current_time):
         if interval == CandleInterval.CANDLE_INTERVAL_5_MIN.value:

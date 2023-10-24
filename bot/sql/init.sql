@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS ema (
     span INT,
     timestamp_column TIMESTAMP,
     ema NUMERIC(10, 3),
+    atr NUMERIC(10, 3),
     UNIQUE (ticker_id, interval, span, timestamp_column)
 );
 

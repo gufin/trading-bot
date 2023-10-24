@@ -94,11 +94,11 @@ class StrategyEvaluator:
                     if ema and candl1.low > ema.ema and (candl2.low <= ema.ema):
                         # users_id = await self.db.get_users_for_ticker(ticker_id)
                         ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
-                        message = (f'{ticker_name} пересек EMA {int(ema.span)} ({ema.ema}) в интервале '
-                                   f'{self.get_interval(interval)}.\n '
-                                   f'Время {self.convert_utc_to_local(ema.timestamp_column)}. '
-                                   f'low свечи {candl2.low} время свечи {self.convert_utc_to_local(candl2.timestamp_column)}.\n'
-                                   f'low предыдущей свечи {candl1.low} время свечи {self.convert_utc_to_local(candl1.timestamp_column)}.')
+                        message = (f'{ticker_name} пересек EMA {int(ema.span)} ({ema.ema}) в интервале {self.get_interval(interval)}.\n '
+                                   f'Время: {self.convert_utc_to_local(ema.timestamp_column)}.\n'
+                                   f'ATR: {ema.atr}.\n'
+                                   f'Low свечи {candl2.low} время свечи {self.convert_utc_to_local(candl2.timestamp_column)}.\n'
+                                   f'Low предыдущей свечи {candl1.low} время свечи {self.convert_utc_to_local(candl1.timestamp_column)}.')
                         await self.send_telegram_message(message)
                         logger.info(f"Сигнал. {message}")
         logger.info("Завершили проверку стратегии")

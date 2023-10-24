@@ -150,10 +150,9 @@ class MarketDataLoader:
 
     @staticmethod
     def dict_to_float(num_dict):
-        units = num_dict['units']
-        nano = str(num_dict['nano'])[:3]
-        num = f'{units}.{nano}'
-        return float(num)
+        units = int(num_dict["units"])
+        nano = int(num_dict["nano"])
+        return units + nano / 1e9
 
     @staticmethod
     def round_date(date: datetime):

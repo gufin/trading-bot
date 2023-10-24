@@ -152,13 +152,13 @@ class Database:
 
         return df
 
-    async def add_ema(self, ticker_id, interval, span, timestamp_column, ema_value):
+    async def add_ema(self, ticker_id, interval, span, timestamp_column, ema_value, atr):
         query = """
-        INSERT INTO ema (ticker_id, interval, span, timestamp_column, ema) 
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO ema (ticker_id, interval, span, timestamp_column, ema, atr) 
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (ticker_id, interval, span, timestamp_column) DO NOTHING
         """
-        await self.pool.execute(query, ticker_id, interval, span, timestamp_column, ema_value)
+        await self.pool.execute(query, ticker_id, interval, span, timestamp_column, ema_value, atr)
 
     async def get_tickers_to_init_ema(self) -> list[TickerToUpdateEma]:
         query = """
@@ -178,10 +178,10 @@ class Database:
     async def get_data_for_ema(self, ticker_id, interval, span) -> list[TickerToUpdateEma]:
         query = """
                SELECT * FROM (
-                SELECT timestamp_column, close 
+                SELECT timestamp_column, close, open, high, low  
                 FROM candles 
                 WHERE ticker_id = $1 AND interval = $2 
-                ORDER BY timestamp_column DESC 
+                ORDER BY timestamp_column DESC  
                 LIMIT $3
             ) AS subquery
             ORDER BY subquery.timestamp_column ASC;
@@ -189,7 +189,7 @@ class Database:
         rows = await self.pool.fetch(query, ticker_id, interval, span * 2)
 
         # Преобразуем результаты в DataFrame
-        df = pd.DataFrame(rows, columns=['timestamp_column', 'close'])
+        df = pd.DataFrame(rows, columns=['timestamp_column', 'close', 'open', 'high', 'low'])
 
         return df
 
@@ -241,7 +241,8 @@ class Database:
         SELECT 
             timestamp_column,
             span,
-            ema
+            ema,
+            atr
         FROM ema
         WHERE ticker_id = $1 AND interval = $2 AND span = $3
         ORDER BY timestamp_column DESC
@@ -253,7 +254,8 @@ class Database:
             return Ema(
                 timestamp_column=str(row['timestamp_column']),
                 span=row['span'],
-                ema=row['ema']
+                ema=row['ema'],
+                atr=row['atr']
             )
         return None
 
