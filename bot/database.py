@@ -1,10 +1,12 @@
 from asyncio import AbstractEventLoop
+from datetime import datetime
 from datetime import timedelta, timezone
 from typing import Optional
-from datetime import datetime
+
 import asyncpg
 import pandas as pd
 from loguru import logger
+from pandas import DataFrame
 
 from market_loader.models import Candle, CandleInterval, Ema, EmaToCalc, Ticker, TickerToUpdateEma
 
@@ -175,7 +177,7 @@ class Database:
                 TickerToUpdateEma(ticker_id=result[0], name=result[1], interval=result[2], span=result[3]))
         return res
 
-    async def get_data_for_ema(self, ticker_id, interval, span) -> list[TickerToUpdateEma]:
+    async def get_data_for_ema(self, ticker_id, interval, span) -> DataFrame:
         query = """
                SELECT * FROM (
                 SELECT timestamp_column, close, open, high, low  

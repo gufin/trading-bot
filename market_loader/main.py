@@ -30,7 +30,7 @@ config.find_instrument = "tinkoff.public.invest.api.contract.v1.InstrumentsServi
 
 loader = MarketDataLoader(db=db, config=config)
 ti_calculator = TechnicalIndicatorsCalculator(db=db)
-strategy_evaluator = StrategyEvaluator(db=db, token=os.getenv("BOT_TOKEN"), chat_id=os.getenv("DEBUG_CHAT_ID"))
+strategy_evaluator = StrategyEvaluator(db=db, token=os.getenv("BOT_TOKEN"), chat_id=int(os.getenv("DEBUG_CHAT_ID")))
 
 
 async def main():
