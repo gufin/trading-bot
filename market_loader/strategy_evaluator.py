@@ -48,7 +48,7 @@ class StrategyEvaluator:
         # Получите текущий временной пояс
         local_tz = get_localzone()
 
-        return utc_time.astimezone(local_tz)
+        return utc_time.astimezone(local_tz).strftime("%H:%M")
 
     @staticmethod
     def get_interval(interval):
