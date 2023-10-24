@@ -71,7 +71,3 @@ class Ema(BaseModel):
     span: float
     ema: float
     atr: float
-
-
-
-
