@@ -29,18 +29,18 @@ class TechnicalIndicatorsCalculator:
                                   atr=row['atr'])
 
     def need_for_calculation(self, interval, current_time):
-        if interval == CandleInterval.CANDLE_INTERVAL_5_MIN.value:
+        if interval == CandleInterval.min_5.value:
             return True
-        if (interval == CandleInterval.CANDLE_INTERVAL_15_MIN.value
+        if (interval == CandleInterval.min_15.value
                 and (current_time - self.last_15_min_update).total_seconds() >= 900):
             self.last_15_min_update = current_time
             return True
-        if (interval == CandleInterval.CANDLE_INTERVAL_HOUR.value
+        if (interval == CandleInterval.hour.value
                 and (current_time - self.last_hour_update).total_seconds() >= 3600):
             self.last_hour_update = current_time
             return True
-        if (interval == CandleInterval.CANDLE_INTERVAL_DAY.value and
-                (current_time - self.last_day_update).total_seconds() >= 3600) * 24:
+        if (interval == CandleInterval.day.value and
+            (current_time - self.last_day_update).total_seconds() >= 3600) * 24:
             self.last_day_update = current_time
             return True
 

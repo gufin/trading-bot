@@ -65,17 +65,17 @@ class StrategyEvaluator:
             return 'day'
 
     def need_for_calculation(self, interval, current_time):
-        if interval == CandleInterval.CANDLE_INTERVAL_5_MIN.value:
+        if interval == CandleInterval.min_5.value:
             return True
-        if (interval == CandleInterval.CANDLE_INTERVAL_15_MIN.value
+        if (interval == CandleInterval.min_15.value
                 and (current_time - self.last_15_min_update).total_seconds() >= 900):
             self.last_15_min_update = current_time
             return True
-        if (interval == CandleInterval.CANDLE_INTERVAL_HOUR.value
+        if (interval == CandleInterval.hour.value
                 and (current_time - self.last_hour_update).total_seconds() >= 3600):
             self.last_hour_update = current_time
             return True
-        if (interval == CandleInterval.CANDLE_INTERVAL_DAY.value and
+        if (interval == CandleInterval.day.value and
             (current_time - self.last_day_update).total_seconds() >= 3600) * 24:
             self.last_day_update = current_time
             return True
@@ -94,7 +94,7 @@ class StrategyEvaluator:
                     if ema and candl1.low > ema.ema and (candl2.low <= ema.ema):
                         # users_id = await self.db.get_users_for_ticker(ticker_id)
                         ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
-                        message = (f'{ticker_name} пересек EMA {int(ema.span)} ({ema.ema}) в интервале {self.get_interval(interval)}.\n '
+                        message = (f'{ticker_name} пересек EMA {int(ema.span)} ({ema.ema}) в интервале {self.get_interval(interval)}.\n'
                                    f'Время: {self.convert_utc_to_local(ema.timestamp_column)}.\n'
                                    f'ATR: {ema.atr}.\n'
                                    f'Low свечи {candl2.low} время свечи {self.convert_utc_to_local(candl2.timestamp_column)}.\n'
