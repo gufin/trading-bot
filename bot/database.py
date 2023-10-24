@@ -140,7 +140,7 @@ class Database:
 
     async def get_data_for_init_ema(self, ticker_id: int, interval: str):
         query = """
-            SELECT timestamp_column, close
+            SELECT timestamp_column, close, open, high, low
             FROM candles
             WHERE ticker_id = $1 AND interval = $2
             ORDER BY timestamp_column
@@ -148,7 +148,7 @@ class Database:
         rows = await self.pool.fetch(query, ticker_id, interval)
 
         # Преобразуем результаты в DataFrame
-        df = pd.DataFrame(rows, columns=['timestamp_column', 'close'])
+        df = pd.DataFrame(rows, columns=['timestamp_column', 'close', 'open', 'high', 'low'])
 
         return df
 
