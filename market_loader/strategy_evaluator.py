@@ -5,7 +5,7 @@ import httpx
 from loguru import logger
 
 from bot.database import Database
-from market_loader.utils import convert_utc_to_local, get_interval_form_str, need_for_calculation
+from market_loader.utils import convert_utc_to_local, get_interval_form_str, make_tw_link, need_for_calculation
 
 
 class StrategyEvaluator:
@@ -24,7 +24,9 @@ class StrategyEvaluator:
 
         payload = {
             "chat_id": self.chat_id,
-            "text": text
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
         }
         async with httpx.AsyncClient() as client:
             attempts = 0
@@ -55,10 +57,11 @@ class StrategyEvaluator:
                             f'{ticker_name} пересек EMA {int(ema.span)} ({ema.ema}) в интервале '
                             f'{get_interval_form_str(interval)}.\n'
                             f'Время: {convert_utc_to_local(ema.timestamp_column)}.\n'
-                            f'ATR: {ema.atr}.\n'
+                            #f'ATR: {ema.atr}.\n'
                             f'Low свечи {candl2.low} время свечи {convert_utc_to_local(candl2.timestamp_column)}.\n'
                             f'Low предыдущей свечи {candl1.low} время свечи '
-                            f'{convert_utc_to_local(candl1.timestamp_column)}.')
+                            f'{convert_utc_to_local(candl1.timestamp_column)}.\n'
+                            f'<a href="{make_tw_link(ticker_name, interval)}">График tradingview</a>')
                         await self.send_telegram_message(message)
                         logger.info(f"Сигнал. {message}")
         logger.info("Завершили проверку стратегии")

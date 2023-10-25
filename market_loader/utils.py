@@ -38,7 +38,7 @@ def get_interval(interval: CandleInterval) -> str:
         return 'день'
 
 
-def get_interval_form_str(interval):
+def get_interval_form_str(interval: str) -> str:
     if interval == 'CANDLE_INTERVAL_5_MIN':
         return '5 мин'
 
@@ -50,6 +50,20 @@ def get_interval_form_str(interval):
 
     if interval == 'CANDLE_INTERVAL_DAY':
         return 'день'
+
+
+def get_interval_form_str_for_tw(interval: str) -> str:
+    if interval == 'CANDLE_INTERVAL_5_MIN':
+        return '5'
+
+    if interval == 'CANDLE_INTERVAL_15_MIN':
+        return '15'
+
+    if interval == 'CANDLE_INTERVAL_HOUR':
+        return '60'
+
+    if interval == 'CANDLE_INTERVAL_DAY':
+        return 'D'
 
 
 def need_for_calculation(cls, interval: str, current_time: datetime) -> bool:
@@ -68,12 +82,18 @@ def need_for_calculation(cls, interval: str, current_time: datetime) -> bool:
         return True
 
 
-def convert_utc_to_local(utc_str):
+def convert_utc_to_local(utc_str: str) -> str:
     utc_time = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
     utc_time = pytz.utc.localize(utc_time)
     local_tz = get_localzone()
 
     return utc_time.astimezone(local_tz).strftime("%H:%M")
+
+
+def make_tw_link(ticker: str, interval: str) -> str:
+    stock_exchange = 'MOEX'
+    return (f'https://www.tradingview.com/chart/?symbol={stock_exchange}:{ticker}'
+            f'&interval={get_interval_form_str_for_tw(interval)}')
 
 
 class MaxRetriesExceededError(Exception):
