@@ -20,7 +20,13 @@ class TechnicalIndicatorsCalculator:
 
     async def _save_data_frame(self, df: DataFrame, ticker_id: int, interval: str, span: int) -> None:
         df['ema'] = df['close'].ewm(span=span, adjust=False).mean()
-        df['atr'] = talib.ATR(df['high'], df['low'], df['close'], timeperiod=14)
+        df['high_minus_low'] = df['high'] - df['low']
+        df['high_minus_close_prev'] = abs(df['high'] - df['close'].shift(1))
+        df['low_minus_close_prev'] = abs(df['low'] - df['close'].shift(1))
+        df['tr'] = df[['high_minus_low', 'high_minus_close_prev', 'low_minus_close_prev']].max(axis=1)
+        period = 14
+        df['atr'] = df['tr'].rolling(window=period).mean()
+
         for index, row in df.iterrows():
             await self.db.add_ema(ticker_id=ticker_id,
                                   interval=interval,

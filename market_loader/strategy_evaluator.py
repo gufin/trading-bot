@@ -54,10 +54,10 @@ class StrategyEvaluator:
                         # users_id = await self.db.get_users_for_ticker(ticker_id)
                         ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
                         message = (
-                            f'{ticker_name} пересек EMA {int(ema.span)} ({ema.ema}) в интервале '
+                            f'<b>{ticker_name}</b> пересек EMA {int(ema.span)} ({ema.ema}) в интервале '
                             f'{get_interval_form_str(interval)}.\n'
                             f'Время: {convert_utc_to_local(ema.timestamp_column)}.\n'
-                            #f'ATR: {ema.atr}.\n'
+                            f'ATR: {ema.atr}.\n'
                             f'Low свечи {candl2.low} время свечи {convert_utc_to_local(candl2.timestamp_column)}.\n'
                             f'Low предыдущей свечи {candl1.low} время свечи '
                             f'{convert_utc_to_local(candl1.timestamp_column)}.\n'
