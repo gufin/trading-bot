@@ -199,7 +199,7 @@ class MarketDataLoader:
                                                                                          CandleInterval.min_15)
             if (datetime.now(timezone.utc) - last_15_min_update).total_seconds() >= 3600 * 24:
                 await self._minute_ticker_data(ticker, datetime.now(timezone.utc), last_15_min_update,
-                                               CandleInterval.min_5)
+                                               CandleInterval.min_15)
             elif (datetime.now(timezone.utc) - last_15_min_update).total_seconds() >= 900:
                 await self._load_and_save_ticker_interval(
                     ticker=ticker,

@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS ema (
     UNIQUE (ticker_id, interval, span, timestamp_column)
 );
 
+CREATE TABLE IF NOT EXISTS ema_cross (
+    ema_cross_id BIGSERIAL PRIMARY KEY,
+    ticker_id BIGINT REFERENCES tickers(ticker_id),
+    interval VARCHAR(64),
+    span INT,
+    timestamp_column TIMESTAMP,
+    UNIQUE (ticker_id, interval, span, timestamp_column)
+);
 
 -- ALTER TABLE tickers
 -- ADD CONSTRAINT unique_ticker_name UNIQUE (name);

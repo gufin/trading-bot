@@ -1,7 +1,6 @@
 from datetime import datetime
 from datetime import timezone
 
-import talib
 from loguru import logger
 from pandas import DataFrame
 
@@ -13,7 +12,7 @@ class TechnicalIndicatorsCalculator:
 
     def __init__(self, db: Database):
         self.db = db
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(timezone.utc).replace(hour=7, minute=0, second=0, microsecond=0)
         self.last_15_min_update = current_time
         self.last_hour_update = current_time
         self.last_day_update = current_time
@@ -48,12 +47,13 @@ class TechnicalIndicatorsCalculator:
     async def calculate(self) -> None:
         await self._init_ema()
         logger.info("Начали расчет EMA")
-        current_time = datetime.now(timezone.utc)
         ema_to_calc = await self.db.get_ema_params_to_calc()
         tickers = await self.db.get_tickers_with_figi()
-        for ticker in tickers:
+        quantity_of_tickers = len(tickers)
+        for pos, ticker in enumerate(tickers):
             for ema_params in ema_to_calc:
-                if need_for_calculation(self, ema_params.interval, current_time):
+                update_time = pos == (quantity_of_tickers - 1)
+                if need_for_calculation(self, ema_params.interval, datetime.now(timezone.utc), update_time):
                     logger.info(
                         (f"EMA | тикер: {ticker.name}; интервал: {get_interval_form_str(ema_params.interval)}; "
                          f"span: {ema_params.span}"))

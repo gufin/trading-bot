@@ -39,7 +39,7 @@ async def main():
         await loader.load_data()
         await ti_calculator.calculate()
         await strategy_evaluator.check_strategy()
-        await asyncio.sleep(300)
+        await asyncio.sleep(200)
 
 
 if __name__ == "__main__":

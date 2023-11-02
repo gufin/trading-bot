@@ -68,6 +68,6 @@ class Candle(BaseModel):
 
 class Ema(BaseModel):
     timestamp_column: str
-    span: float
+    span: int
     ema: float
     atr: float
