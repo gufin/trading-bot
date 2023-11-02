@@ -8,7 +8,7 @@ import pandas as pd
 from loguru import logger
 from pandas import DataFrame
 
-from market_loader.models import Candle, CandleInterval, Ema, EmaToCalc, Ticker, TickerToUpdateEma
+from market_loader.models import Candle, CandleInterval, Ema, EmaModel, EmaToCalc, Ticker, TickerToUpdateEma
 
 
 class Database:
@@ -312,3 +312,25 @@ class Database:
         """
         result = await self.pool.fetchval(query, ticker_id, interval, span, start_time, end_time)
         return result
+
+    async def get_existing_ema_keys(self, ticker_id, interval, span):
+        query = """
+        SELECT ticker_id, interval, span, timestamp_column
+        FROM ema
+        WHERE ticker_id = $1 AND interval = $2 AND span = $3
+        """
+        records = await self.pool.fetch(query, ticker_id, interval, span)
+        return [(record['ticker_id'], record['interval'], record['span'], record['timestamp_column']) for record in
+                records]
+
+    async def bulk_add_ema(self, ema_models: list[EmaModel]):
+        # Преобразование списка моделей в список кортежей
+        records = [(model.ticker_id, model.interval, model.span, model.timestamp_column, model.ema, model.atr) for
+                   model in ema_models]
+
+        query = """
+        COPY ema (ticker_id, interval, span, timestamp_column, ema, atr)
+        FROM STDIN
+        """
+        await self.pool.copy_records_to_table('ema', records=records, columns=(
+            'ticker_id', 'interval', 'span', 'timestamp_column', 'ema', 'atr'))

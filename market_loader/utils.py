@@ -95,6 +95,10 @@ def convert_utc_to_local(utc_str: str) -> str:
     return utc_time.astimezone(local_tz).strftime("%H:%M")
 
 
+def convert_to_date(utc_str: str) -> datetime:
+    return datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
+
+
 def make_tw_link(ticker: str, interval: str) -> str:
     stock_exchange = 'MOEX'
     return (f'https://www.tradingview.com/chart/?symbol={stock_exchange}:{ticker}'
@@ -111,6 +115,14 @@ def get_start_time(end_time: datetime) -> datetime:
                 - timedelta(hours=delta_hours)).replace(tzinfo=None)
     else:
         return end_time.replace(tzinfo=None)
+
+
+def to_start_of_day(date: datetime) -> datetime:
+    return date.replace(hour=0, minute=0, second=0, microsecond=999999)
+
+
+def to_end_of_day(date: datetime) -> datetime:
+    return date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
 
 class MaxRetriesExceededError(Exception):

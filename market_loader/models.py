@@ -1,5 +1,5 @@
 from enum import Enum
-
+from datetime import datetime
 from pydantic import BaseModel
 
 
@@ -71,3 +71,12 @@ class Ema(BaseModel):
     span: int
     ema: float
     atr: float
+
+
+class EmaModel(BaseModel):
+    ticker_id: int
+    interval: str
+    span: int
+    timestamp_column: datetime
+    ema: float
+    atr: float = 0

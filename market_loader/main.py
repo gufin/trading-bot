@@ -1,10 +1,12 @@
 import asyncio
 import os
+from datetime import datetime
 
 from dotenv import load_dotenv
 from loguru import logger
 
 from bot.database import Database
+from market_loader.constants import mine_circle_sleep_time
 from market_loader.loader import MarketDataLoader
 from market_loader.models import ApiConfig
 from market_loader.strategy_evaluator import StrategyEvaluator
@@ -36,10 +38,14 @@ strategy_evaluator = StrategyEvaluator(db=db, token=os.getenv("BOT_TOKEN"), chat
 async def main():
     logger.info("Загрузка началась")
     while True:
+        start_time = datetime.now()
         await loader.load_data()
         await ti_calculator.calculate()
         await strategy_evaluator.check_strategy()
-        await asyncio.sleep(200)
+        end_time = datetime.now()
+        sleep_time = mine_circle_sleep_time - (end_time - start_time).total_seconds()
+        if sleep_time > 0:
+            await asyncio.sleep(sleep_time)
 
 
 if __name__ == "__main__":

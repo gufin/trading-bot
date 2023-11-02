@@ -5,7 +5,9 @@ from loguru import logger
 from pandas import DataFrame
 
 from bot.database import Database
-from market_loader.utils import get_interval_form_str, need_for_calculation
+from market_loader.constants import atr_period
+from market_loader.models import EmaModel
+from market_loader.utils import convert_to_date, get_interval_form_str, need_for_calculation
 
 
 class TechnicalIndicatorsCalculator:
@@ -23,16 +25,25 @@ class TechnicalIndicatorsCalculator:
         df['high_minus_close_prev'] = abs(df['high'] - df['close'].shift(1))
         df['low_minus_close_prev'] = abs(df['low'] - df['close'].shift(1))
         df['tr'] = df[['high_minus_low', 'high_minus_close_prev', 'low_minus_close_prev']].max(axis=1)
-        period = 14
-        df['atr'] = df['tr'].rolling(window=period).mean()
+        df['atr'] = df['tr'].rolling(window=atr_period).mean()
 
-        for index, row in df.iterrows():
-            await self.db.add_ema(ticker_id=ticker_id,
-                                  interval=interval,
-                                  span=span,
-                                  timestamp_column=row['timestamp_column'],
-                                  ema_value=row['ema'],
-                                  atr=row['atr'])
+        last_ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval, span)
+        if last_ema is not None:
+            filtered_df = df[df['timestamp_column'] > convert_to_date(last_ema.timestamp_column)]
+        else:
+            filtered_df = df
+        list_of_rows = [
+            EmaModel(
+                ticker_id=ticker_id,
+                interval=interval,
+                span=span,
+                timestamp_column=row['timestamp_column'],
+                ema=row['ema'],
+                atr=row['atr'],
+            )
+            for index, row in filtered_df.iterrows()
+        ]
+        await self.db.bulk_add_ema(list_of_rows)
 
     async def _init_ema(self) -> None:
         logger.info("Начали инициализацию EMA")

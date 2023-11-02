@@ -1,10 +1,11 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import httpx
 from loguru import logger
 
 from bot.database import Database
+from market_loader.constants import attempts_to_send_tg_msg, ema_cross_window, tg_send_timeout
 from market_loader.models import CandleInterval
 from market_loader.utils import convert_utc_to_local, get_interval_form_str, get_start_time, make_tw_link, \
     need_for_calculation
@@ -20,7 +21,7 @@ class StrategyEvaluator:
         self.last_hour_update = current_time
         self.last_day_update = current_time
         self.chat_id = chat_id
-        self.ema_window_count = 4
+        self.ema_window_count = ema_cross_window
 
     async def send_telegram_message(self, text: str) -> None:
         base_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
@@ -33,14 +34,14 @@ class StrategyEvaluator:
         }
         async with httpx.AsyncClient() as client:
             attempts = 0
-            while attempts < 10:
+            while attempts < attempts_to_send_tg_msg:
                 try:
                     await client.post(base_url, data=payload)
                     break
                 except Exception as e:
                     attempts += 1
                     logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(tg_send_timeout)
 
     async def check_strategy(self):
         logger.info("Начали проверку стратегии")
@@ -53,7 +54,8 @@ class StrategyEvaluator:
                 candles = await self.db.get_last_two_candles_for_each_ticker(interval)
                 for ticker_id in candles:
                     ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval, 200)
-                    ema_1000_5_min = await self.db.get_latest_ema_for_ticker(ticker_id, CandleInterval.min_5.value, 1000)
+                    ema_1000_5_min = await self.db.get_latest_ema_for_ticker(ticker_id, CandleInterval.min_5.value,
+                                                                             1000)
                     candl1 = candles[ticker_id][1]
                     candl2 = candles[ticker_id][0]
                     if ema and candl1.low > ema.ema and (candl2.low <= ema.ema):
@@ -76,7 +78,8 @@ class StrategyEvaluator:
                                 f'Low предыдущей свечи: {candl1.low}. Время свечи '
                                 f'{convert_utc_to_local(candl1.timestamp_column)}.\n'
                                 f'Старшая EMA {1000} в интервале {get_interval_form_str(CandleInterval.min_5.value)}: '
-                                f'{ema_1000_5_min.ema}. Время: {convert_utc_to_local(ema_1000_5_min.timestamp_column)}.\n'
+                                f'{ema_1000_5_min.ema}. '
+                                f'Время: {convert_utc_to_local(ema_1000_5_min.timestamp_column)}.\n'
                                 f'<a href="{make_tw_link(ticker_name, interval)}">График tradingview</a>')
                             await self.send_telegram_message(message)
                             logger.info(f"Сигнал. {message}")
