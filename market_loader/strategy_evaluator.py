@@ -5,9 +5,9 @@ import httpx
 from loguru import logger
 
 from bot.database import Database
+from market_loader.constants import attempts_to_send_tg_msg, ema_cross_window, tg_send_timeout
 from market_loader.models import CandleInterval
-from market_loader.utils import convert_utc_to_local, get_interval_form_str, get_start_time, make_tw_link, \
-    need_for_calculation
+from market_loader.utils import get_rebound_message, get_start_time, need_for_calculation
 
 
 class StrategyEvaluator:
@@ -20,7 +20,8 @@ class StrategyEvaluator:
         self.last_hour_update = current_time
         self.last_day_update = current_time
         self.chat_id = chat_id
-        self.ema_window_count = 4
+        self.ema_window_count = ema_cross_window
+        self.need_for_cross_update = True
 
     async def send_telegram_message(self, text: str) -> None:
         base_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
@@ -33,16 +34,16 @@ class StrategyEvaluator:
         }
         async with httpx.AsyncClient() as client:
             attempts = 0
-            while attempts < 10:
+            while attempts < attempts_to_send_tg_msg:
                 try:
                     await client.post(base_url, data=payload)
                     break
                 except Exception as e:
                     attempts += 1
                     logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(tg_send_timeout)
 
-    async def check_strategy(self):
+    async def check_strategy(self) -> None:
         logger.info("Начали проверку стратегии")
         current_time = datetime.now(timezone.utc)
         intervals = [CandleInterval.min_5.value]
@@ -50,34 +51,60 @@ class StrategyEvaluator:
         for pos, interval in enumerate(intervals):
             update_time = pos == (quantity_of_intervals - 1)
             if need_for_calculation(self, interval, current_time, update_time):
-                candles = await self.db.get_last_two_candles_for_each_ticker(interval)
-                for ticker_id in candles:
-                    ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval, 200)
-                    ema_1000_5_min = await self.db.get_latest_ema_for_ticker(ticker_id, CandleInterval.min_5.value, 1000)
-                    candl1 = candles[ticker_id][1]
-                    candl2 = candles[ticker_id][0]
-                    if ema and candl1.low > ema.ema and (candl2.low <= ema.ema):
-                        await self.db.add_ema_cross(ticker_id, interval, ema.span,
-                                                    datetime.strptime(ema.timestamp_column, '%Y-%m-%d %H:%M:%S'))
-                        end_time = datetime.now(timezone.utc)
-                        cross_count = await self.db.get_ema_cross_count(ticker_id, interval, ema.span,
-                                                                        get_start_time(end_time),
-                                                                        end_time.replace(tzinfo=None))
-                        if 1 <= cross_count <= 2 and ema.ema > ema_1000_5_min.ema:
-                            ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
-                            message = (
-                                f'<b>#{ticker_name}</b> пересек EMA {int(ema.span)} ({ema.ema}) в интервале '
-                                f'{get_interval_form_str(interval)}.\n'
-                                f'Время: {convert_utc_to_local(ema.timestamp_column)}.\n'
-                                f'ATR: {ema.atr}.\n'
-                                f'Количество пересечений за последние {self.ema_window_count} часа: {cross_count}.\n'
-                                f'Low свечи: {candl2.low}. Время свечи: '
-                                f'{convert_utc_to_local(candl2.timestamp_column)}.\n'
-                                f'Low предыдущей свечи: {candl1.low}. Время свечи '
-                                f'{convert_utc_to_local(candl1.timestamp_column)}.\n'
-                                f'Старшая EMA {1000} в интервале {get_interval_form_str(CandleInterval.min_5.value)}: '
-                                f'{ema_1000_5_min.ema}. Время: {convert_utc_to_local(ema_1000_5_min.timestamp_column)}.\n'
-                                f'<a href="{make_tw_link(ticker_name, interval)}">График tradingview</a>')
-                            await self.send_telegram_message(message)
-                            logger.info(f"Сигнал. {message}")
+                await self._check_rebound(200, CandleInterval.min_5, 1000, CandleInterval.min_5)
         logger.info("Завершили проверку стратегии")
+
+    async def _check_rebound(self, span: int, interval: CandleInterval, older_span: int,
+                             older_interval: CandleInterval):
+        if self.need_for_cross_update:
+            await self._update_cross_data()
+        candles = await self.db.get_last_two_candles_for_each_ticker(interval.value)
+        for ticker_id in candles:
+            current_ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval.value, span)
+            prev_ema = await self.db.get_penultimate_ema_for_ticker(ticker_id, interval.value, span)
+            older_ema = await self.db.get_latest_ema_for_ticker(ticker_id, older_interval.value, older_span)
+            prev_candle = candles[ticker_id][1]
+            latest_candle = candles[ticker_id][0]
+            if current_ema and prev_ema and latest_candle.high >= current_ema.ema and prev_candle.high < prev_ema.ema:
+                await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span,
+                                            datetime.strptime(current_ema.timestamp_column, '%Y-%m-%d %H:%M:%S'))
+            if current_ema and prev_ema and prev_candle.low > prev_ema.ema and (latest_candle.low <= current_ema.ema):
+                await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span,
+                                            datetime.strptime(current_ema.timestamp_column, '%Y-%m-%d %H:%M:%S'))
+                end_time = datetime.now(timezone.utc)
+                cross_count = await self.db.get_ema_cross_count(ticker_id, interval.value, current_ema.span,
+                                                                get_start_time(end_time).replace(tzinfo=None),
+                                                                end_time.replace(tzinfo=None))
+                if 1 <= cross_count <= 2 and current_ema.ema > older_ema.ema:
+                    ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
+                    message = get_rebound_message(ticker_name, current_ema, older_ema, interval, older_interval,
+                                                  latest_candle, prev_candle, cross_count)
+                    await self.send_telegram_message(message)
+                    logger.info(f"Сигнал. {message}")
+
+    async def _update_cross_data(self):
+        logger.info("Начали обновление данных о пересечении EMA")
+        interval = CandleInterval.min_5
+        span = 200
+
+        end_time = datetime.now(timezone.utc).replace(tzinfo=None)
+        start_time = get_start_time(end_time).replace(tzinfo=None)
+        while start_time < end_time:
+            candles = await self.db.get_two_candles_for_each_ticker_by_period(interval.value, start_time)
+            for ticker_id in candles:
+                prev_candle = candles[ticker_id][1]
+                latest_candle = candles[ticker_id][0]
+                current_ema = await self.db.get_ema_for_ticker_by_period(ticker_id, interval.value, span, start_time)
+                prev_ema = await self.db.get_penultimate_ema_for_ticker_by_period(ticker_id, interval.value, span,
+                                                                                  start_time)
+                if (current_ema and prev_ema and
+                        latest_candle.high >= current_ema.ema and prev_candle.high < prev_ema.ema):
+                    await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span,
+                                                datetime.strptime(current_ema.timestamp_column, '%Y-%m-%d %H:%M:%S'))
+                if current_ema and prev_ema and prev_candle.low > prev_ema.ema and (
+                        latest_candle.low <= current_ema.ema):
+                    await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span,
+                                                datetime.strptime(current_ema.timestamp_column, '%Y-%m-%d %H:%M:%S'))
+            start_time = start_time + timedelta(seconds=300)
+        self.need_for_cross_update = False
+        logger.info("Закончили обновление данных о пересечении EMA")

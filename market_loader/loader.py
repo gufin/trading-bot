@@ -8,9 +8,10 @@ from httpx import Response
 from loguru import logger
 
 from bot.database import Database
+from market_loader.constants import attempts_to_tcs_request, deep_for_hour_candles, tcs_request_timeout
 from market_loader.models import ApiConfig, CandleInterval, FindInstrumentRequest, InstrumentRequest, Ticker
 from market_loader.utils import (dict_to_float, get_correct_time_format, get_interval, MaxRetriesExceededError,
-                                 round_date)
+                                 round_date, to_end_of_day, to_start_of_day)
 
 
 class MarketDataLoader:
@@ -47,15 +48,15 @@ class MarketDataLoader:
 
         async with httpx.AsyncClient() as client:
             attempts = 0
-            while attempts < 10:
+            while attempts < attempts_to_tcs_request:
                 try:
                     return await client.post(url, headers=headers, json=json)
                 except Exception as e:
                     attempts += 1
                     logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(tcs_request_timeout)
 
-        raise MaxRetriesExceededError("Не удалось выполнить запрос после 10 попыток.")
+        raise MaxRetriesExceededError(f"Не удалось выполнить запрос после {attempts_to_tcs_request} попыток.")
 
     async def _update_tickers(self) -> None:
         logger.info("Начали инициализацию тикеров")
@@ -103,21 +104,17 @@ class MarketDataLoader:
     async def _minute_ticker_data(self, ticker: Ticker, current_time: datetime, end_time: datetime,
                                   interval: CandleInterval) -> None:
         while current_time > end_time:
-            start_of_day = current_time.replace(hour=0, minute=0, second=0, microsecond=999999)
-            end_of_day = current_time.replace(hour=23, minute=59, second=59, microsecond=999999)
-            await self._load_and_save_ticker_interval(ticker, interval, start_of_day, end_of_day)
+            await self._load_and_save_ticker_interval(ticker, interval, to_start_of_day(current_time),
+                                                      to_end_of_day(current_time))
 
             current_time -= timedelta(days=1)
 
     async def _hour_ticker_data(self, ticker: Ticker, current_time: datetime, end_time: datetime) -> None:
         while current_time > end_time:
             day_of_week = current_time.weekday()
-            start_of_week = (current_time - timedelta(days=day_of_week)).replace(hour=0, minute=0, second=0,
-                                                                                 microsecond=999999)
-            end_of_week = (start_of_week + timedelta(days=4)).replace(hour=23, minute=59, second=59,
-                                                                      microsecond=999999)
-            await self._load_and_save_ticker_interval(ticker, CandleInterval.hour,
-                                                      start_of_week, end_of_week)
+            start_of_week = to_start_of_day((current_time - timedelta(days=day_of_week)))
+            end_of_week = to_end_of_day(start_of_week + timedelta(days=4))
+            await self._load_and_save_ticker_interval(ticker, CandleInterval.hour, start_of_week, end_of_week)
             current_time -= timedelta(weeks=1)
 
     async def _init_ticker_data(self, ticker: Ticker) -> None:
@@ -127,11 +124,11 @@ class MarketDataLoader:
         await self._minute_ticker_data(ticker, current_time, four_weeks_ago, CandleInterval.min_15)
 
         current_time = datetime.now(timezone.utc)
-        two_months_ago = current_time - timedelta(days=60)
-        await self._hour_ticker_data(ticker, current_time, two_months_ago)
+        days_ago = current_time - timedelta(days=deep_for_hour_candles)
+        await self._hour_ticker_data(ticker, current_time, days_ago)
 
         current_time = datetime.now(timezone.utc)
-        year_ago = (current_time - timedelta(days=365)).replace(hour=0, minute=0, second=0, microsecond=999999)
+        year_ago = to_start_of_day(current_time - timedelta(days=365))
         await self._load_and_save_ticker_interval(ticker, CandleInterval.day, current_time, year_ago)
 
     async def _get_ticker_candles(self, figi: str, last_update: datetime, current_time_utc: datetime,

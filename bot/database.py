@@ -8,7 +8,7 @@ import pandas as pd
 from loguru import logger
 from pandas import DataFrame
 
-from market_loader.models import Candle, CandleInterval, Ema, EmaToCalc, Ticker, TickerToUpdateEma
+from market_loader.models import Candle, CandleInterval, Ema, EmaModel, EmaToCalc, Ticker, TickerToUpdateEma
 
 
 class Database:
@@ -238,6 +238,49 @@ class Database:
 
         return candles_dict
 
+    async def get_two_candles_for_each_ticker_by_period(self, interval: str, timestamp: datetime) -> dict[int, list[Candle]]:
+        query = """
+           WITH NumberedCandles AS (
+               SELECT 
+                   ticker_id,
+                   timestamp_column,
+                   open,
+                   high,
+                   low,
+                   close,
+                   ROW_NUMBER() OVER(PARTITION BY ticker_id ORDER BY timestamp_column DESC) AS rn
+               FROM candles
+               WHERE interval = $1 AND timestamp_column <= $2
+           )
+           SELECT 
+               ticker_id,
+               timestamp_column,
+               open,
+               high,
+               low,
+               close
+           FROM NumberedCandles
+           WHERE rn <= 2
+           ORDER BY ticker_id, timestamp_column DESC;
+           """
+        rows = await self.pool.fetch(query, interval, timestamp)
+        candles_dict = {}
+
+        for row in rows:
+            candle = Candle(
+                timestamp_column=str(row['timestamp_column']),
+                open=row['open'],
+                high=row['high'],
+                low=row['low'],
+                close=row['close']
+            )
+            if row['ticker_id'] in candles_dict:
+                candles_dict[row['ticker_id']].append(candle)
+            else:
+                candles_dict[row['ticker_id']] = [candle]
+
+        return candles_dict
+
     async def get_latest_ema_for_ticker(self, ticker_id: int, interval: str, span) -> Optional[Ema]:
         query = """
         SELECT 
@@ -249,6 +292,37 @@ class Database:
         WHERE ticker_id = $1 AND interval = $2 AND span = $3
         ORDER BY timestamp_column DESC
         LIMIT 1;
+        """
+        row = await self.pool.fetchrow(query, ticker_id, interval, span)
+
+        if row:
+            return Ema(
+                timestamp_column=str(row['timestamp_column']),
+                span=row['span'],
+                ema=row['ema'],
+                atr=row['atr']
+            )
+        return None
+
+    async def get_penultimate_ema_for_ticker(self, ticker_id: int, interval: str, span) -> Optional[Ema]:
+        query = """
+        SELECT 
+            sub.timestamp_column,
+            sub.span,
+            sub.ema,
+            sub.atr
+        FROM (
+            SELECT
+                timestamp_column,
+                span,
+                ema,
+                atr
+            FROM ema
+            WHERE ticker_id = $1 AND interval = $2 AND span = $3
+            ORDER BY timestamp_column DESC
+            LIMIT 2
+        ) sub
+        OFFSET 1;
         """
         row = await self.pool.fetchrow(query, ticker_id, interval, span)
 
@@ -312,3 +386,80 @@ class Database:
         """
         result = await self.pool.fetchval(query, ticker_id, interval, span, start_time, end_time)
         return result
+
+    async def get_existing_ema_keys(self, ticker_id, interval, span):
+        query = """
+        SELECT ticker_id, interval, span, timestamp_column
+        FROM ema
+        WHERE ticker_id = $1 AND interval = $2 AND span = $3
+        """
+        records = await self.pool.fetch(query, ticker_id, interval, span)
+        return [(record['ticker_id'], record['interval'], record['span'], record['timestamp_column']) for record in
+                records]
+
+    async def bulk_add_ema(self, ema_models: list[EmaModel]):
+        # Преобразование списка моделей в список кортежей
+        records = [(model.ticker_id, model.interval, model.span, model.timestamp_column, model.ema, model.atr) for
+                   model in ema_models]
+
+        query = """
+        COPY ema (ticker_id, interval, span, timestamp_column, ema, atr)
+        FROM STDIN
+        """
+        await self.pool.copy_records_to_table('ema', records=records, columns=(
+            'ticker_id', 'interval', 'span', 'timestamp_column', 'ema', 'atr'))
+
+    async def get_ema_for_ticker_by_period(self, ticker_id: int, interval: str, span, end_time: datetime) -> Optional[
+        Ema]:
+        query = """
+        SELECT 
+            timestamp_column,
+            span,
+            ema,
+            atr
+        FROM ema
+        WHERE ticker_id = $1 AND interval = $2 AND span = $3 AND timestamp_column <= $4
+        ORDER BY timestamp_column DESC
+        LIMIT 1;
+        """
+        row = await self.pool.fetchrow(query, ticker_id, interval, span, end_time)
+
+        if row:
+            return Ema(
+                timestamp_column=str(row['timestamp_column']),
+                span=row['span'],
+                ema=row['ema'],
+                atr=row['atr']
+            )
+        return None
+
+    async def get_penultimate_ema_for_ticker_by_period(self, ticker_id: int, interval: str, span, end_time: datetime) -> Optional[Ema]:
+        query = """
+        SELECT 
+            sub.timestamp_column,
+            sub.span,
+            sub.ema,
+            sub.atr
+        FROM (
+            SELECT
+                timestamp_column,
+                span,
+                ema,
+                atr
+            FROM ema
+            WHERE ticker_id = $1 AND interval = $2 AND span = $3 AND timestamp_column <= $4
+            ORDER BY timestamp_column DESC
+            LIMIT 2
+        ) sub
+        OFFSET 1;
+        """
+        row = await self.pool.fetchrow(query, ticker_id, interval, span, end_time)
+
+        if row:
+            return Ema(
+                timestamp_column=str(row['timestamp_column']),
+                span=row['span'],
+                ema=row['ema'],
+                atr=row['atr']
+            )
+        return None

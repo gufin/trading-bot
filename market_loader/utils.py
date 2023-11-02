@@ -4,7 +4,7 @@ import pytz
 from tzlocal import get_localzone
 
 from market_loader.constants import ema_cross_window, trade_end_hour, trade_start_hour
-from market_loader.models import CandleInterval
+from market_loader.models import Candle, CandleInterval, Ema
 
 
 def dict_to_float(num_dict: dict) -> float:
@@ -95,6 +95,10 @@ def convert_utc_to_local(utc_str: str) -> str:
     return utc_time.astimezone(local_tz).strftime("%H:%M")
 
 
+def convert_to_date(utc_str: str) -> datetime:
+    return datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
+
+
 def make_tw_link(ticker: str, interval: str) -> str:
     stock_exchange = 'MOEX'
     return (f'https://www.tradingview.com/chart/?symbol={stock_exchange}:{ticker}'
@@ -111,6 +115,27 @@ def get_start_time(end_time: datetime) -> datetime:
                 - timedelta(hours=delta_hours)).replace(tzinfo=None)
     else:
         return end_time.replace(tzinfo=None)
+
+
+def to_start_of_day(date: datetime) -> datetime:
+    return date.replace(hour=0, minute=0, second=0, microsecond=999999)
+
+
+def to_end_of_day(date: datetime) -> datetime:
+    return date.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+
+def get_rebound_message(ticker_name: str, current_ema: Ema, older_ema: Ema, interval: CandleInterval,
+                        older_interval: CandleInterval, latest_candle: Candle, prev_candle: Candle, cross_count: int):
+    return (f'<b>#{ticker_name}</b> пересек EMA {int(current_ema.span)} ({current_ema.ema}) в интервале '
+            f'{get_interval_form_str(interval.value)}.\nВремя: {convert_utc_to_local(current_ema.timestamp_column)}.\n'
+            f'ATR: {current_ema.atr}.\nКоличество пересечений за последние {ema_cross_window} часа: {cross_count}.\n'
+            f'Low свечи: {latest_candle.low}. Время свечи: {convert_utc_to_local(latest_candle.timestamp_column)}.\n'
+            f'Low предыдущей свечи: {prev_candle.low}. Время свечи '
+            f'{convert_utc_to_local(prev_candle.timestamp_column)}.\n'
+            f'Старшая EMA {older_ema.span} в интервале {get_interval_form_str(older_interval.value)}: {older_ema.ema}.'
+            f' Время: {convert_utc_to_local(older_ema.timestamp_column)}.\n'
+            f'<a href="{make_tw_link(ticker_name, interval.value)}">График tradingview</a>')
 
 
 class MaxRetriesExceededError(Exception):
