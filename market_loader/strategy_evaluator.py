@@ -6,7 +6,8 @@ from loguru import logger
 
 from bot.database import Database
 from market_loader.models import CandleInterval
-from market_loader.utils import convert_utc_to_local, get_interval_form_str, make_tw_link, need_for_calculation
+from market_loader.utils import convert_utc_to_local, get_interval_form_str, get_start_time, make_tw_link, \
+    need_for_calculation
 
 
 class StrategyEvaluator:
@@ -52,18 +53,17 @@ class StrategyEvaluator:
                 candles = await self.db.get_last_two_candles_for_each_ticker(interval)
                 for ticker_id in candles:
                     ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval, 200)
-                    ema_200_hour = await self.db.get_latest_ema_for_ticker(ticker_id, CandleInterval.hour.value, 200)
+                    ema_1000_5_min = await self.db.get_latest_ema_for_ticker(ticker_id, CandleInterval.min_5.value, 1000)
                     candl1 = candles[ticker_id][1]
                     candl2 = candles[ticker_id][0]
                     if ema and candl1.low > ema.ema and (candl2.low <= ema.ema):
                         await self.db.add_ema_cross(ticker_id, interval, ema.span,
                                                     datetime.strptime(ema.timestamp_column, '%Y-%m-%d %H:%M:%S'))
                         end_time = datetime.now(timezone.utc)
-                        start_time = end_time - timedelta(hours=self.ema_window_count)
                         cross_count = await self.db.get_ema_cross_count(ticker_id, interval, ema.span,
-                                                                        start_time.replace(tzinfo=None),
+                                                                        get_start_time(end_time),
                                                                         end_time.replace(tzinfo=None))
-                        if 1 <= cross_count <= 2 and ema.ema > ema_200_hour.ema:
+                        if 1 <= cross_count <= 2 and ema.ema > ema_1000_5_min.ema:
                             ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
                             message = (
                                 f'<b>#{ticker_name}</b> пересек EMA {int(ema.span)} ({ema.ema}) в интервале '
@@ -75,8 +75,8 @@ class StrategyEvaluator:
                                 f'{convert_utc_to_local(candl2.timestamp_column)}.\n'
                                 f'Low предыдущей свечи: {candl1.low}. Время свечи '
                                 f'{convert_utc_to_local(candl1.timestamp_column)}.\n'
-                                f'Старшая EMA {200} в интервале {get_interval_form_str(CandleInterval.hour.value)}: '
-                                f'{ema_200_hour.ema}. Время: {convert_utc_to_local(ema_200_hour.timestamp_column)}.\n'
+                                f'Старшая EMA {1000} в интервале {get_interval_form_str(CandleInterval.min_5.value)}: '
+                                f'{ema_1000_5_min.ema}. Время: {convert_utc_to_local(ema_1000_5_min.timestamp_column)}.\n'
                                 f'<a href="{make_tw_link(ticker_name, interval)}">График tradingview</a>')
                             await self.send_telegram_message(message)
                             logger.info(f"Сигнал. {message}")

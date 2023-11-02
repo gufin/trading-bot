@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import pytz
 from tzlocal import get_localzone
 
+from market_loader.constants import ema_cross_window, trade_end_hour, trade_start_hour
 from market_loader.models import CandleInterval
 
 
@@ -79,7 +80,8 @@ def need_for_calculation(cls, interval: str, current_time: datetime, update_time
         if update_time:
             cls.last_hour_update = current_time.replace(minute=0, second=0, microsecond=0)
         return True
-    if (interval == CandleInterval.day.value and (current_time - cls.last_day_update).total_seconds() >= 3600) * 24+60:
+    if (interval == CandleInterval.day.value and (
+            current_time - cls.last_day_update).total_seconds() >= 3600) * 24 + 60:
         if update_time:
             cls.last_day_update = current_time.replace(minute=0, second=0, microsecond=0)
         return True
@@ -99,19 +101,17 @@ def make_tw_link(ticker: str, interval: str) -> str:
             f'&interval={get_interval_form_str_for_tw(interval)}')
 
 
-def calculate_start_time(end_time, hours_to_subtract):
-
-    # Если время после 20:50, то отсчет идет от 20:50 предыдущего рабочего дня
-    if end_time.hour >= 20 and end_time.minute > 50:
-        start_time = end_time.replace(hour=20, minute=50, second=0, microsecond=0) - timedelta(days=1)
+def get_start_time(end_time: datetime) -> datetime:
+    if end_time.hour >= (trade_start_hour + ema_cross_window):
+        return end_time - timedelta(hours=ema_cross_window)
+    elif trade_start_hour <= end_time.hour <= trade_end_hour:
+        delta_hours = (trade_start_hour + ema_cross_window) - end_time.hour
+        delta_days = 3 if end_time.weekday() == 0 else 1
+        return ((end_time - timedelta(days=delta_days)).replace(hour=trade_end_hour, minute=50)
+                - timedelta(hours=delta_hours)).replace(tzinfo=None)
     else:
-        start_time = end_time.replace(minute=50, second=0, microsecond=0) - timedelta(hours=hours_to_subtract)
+        return end_time.replace(tzinfo=None)
 
-    # Проверяем, не попадает ли start_time на выходной
-    while start_time.weekday() > 4:  # 5 и 6 - суббота и воскресенье
-        start_time -= timedelta(days=1)
-
-    return start_time
 
 class MaxRetriesExceededError(Exception):
     def __init__(self, message="Max retries exceeded"):
