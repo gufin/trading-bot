@@ -14,7 +14,7 @@ def dict_to_float(num_dict: dict) -> float:
 
 def round_date(date: datetime) -> datetime:
     minutes = date.minute
-    rounded_minutes = round(minutes / 5) * 5
+    rounded_minutes = (minutes + 4) // 5 * 5
     difference = rounded_minutes - minutes
     rounded_dt = date + timedelta(minutes=difference)
     return rounded_dt.replace(microsecond=999999)
@@ -66,19 +66,22 @@ def get_interval_form_str_for_tw(interval: str) -> str:
         return 'D'
 
 
-def need_for_calculation(cls, interval: str, current_time: datetime) -> bool:
+def need_for_calculation(cls, interval: str, current_time: datetime, update_time: bool) -> bool:
     if interval == CandleInterval.min_5.value:
         return True
     if (interval == CandleInterval.min_15.value
             and (current_time - cls.last_15_min_update).total_seconds() >= 900):
-        cls.last_15_min_update = current_time
+        if update_time:
+            cls.last_15_min_update = current_time.replace(second=0, microsecond=0)
         return True
     if (interval == CandleInterval.hour.value
-            and (current_time - cls.last_hour_update).total_seconds() >= 3600):
-        cls.last_hour_update = current_time
+            and (current_time - cls.last_hour_update).total_seconds() >= 3660):
+        if update_time:
+            cls.last_hour_update = current_time.replace(minute=0, second=0, microsecond=0)
         return True
-    if (interval == CandleInterval.day.value and (current_time - cls.last_day_update).total_seconds() >= 3600) * 24:
-        cls.last_day_update = current_time
+    if (interval == CandleInterval.day.value and (current_time - cls.last_day_update).total_seconds() >= 3600) * 24+60:
+        if update_time:
+            cls.last_day_update = current_time.replace(minute=0, second=0, microsecond=0)
         return True
 
 
@@ -95,6 +98,20 @@ def make_tw_link(ticker: str, interval: str) -> str:
     return (f'https://www.tradingview.com/chart/?symbol={stock_exchange}:{ticker}'
             f'&interval={get_interval_form_str_for_tw(interval)}')
 
+
+def calculate_start_time(end_time, hours_to_subtract):
+
+    # Если время после 20:50, то отсчет идет от 20:50 предыдущего рабочего дня
+    if end_time.hour >= 20 and end_time.minute > 50:
+        start_time = end_time.replace(hour=20, minute=50, second=0, microsecond=0) - timedelta(days=1)
+    else:
+        start_time = end_time.replace(minute=50, second=0, microsecond=0) - timedelta(hours=hours_to_subtract)
+
+    # Проверяем, не попадает ли start_time на выходной
+    while start_time.weekday() > 4:  # 5 и 6 - суббота и воскресенье
+        start_time -= timedelta(days=1)
+
+    return start_time
 
 class MaxRetriesExceededError(Exception):
     def __init__(self, message="Max retries exceeded"):

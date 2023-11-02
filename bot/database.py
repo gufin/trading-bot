@@ -295,3 +295,20 @@ class Database:
         if not row:
             return datetime.now(timezone.utc) - timedelta(days=60)  # или можно вернуть какое-либо исключение
         return row[0].replace(tzinfo=timezone.utc, microsecond=999999)
+
+    async def add_ema_cross(self, ticker_id: int, interval: str, span: int, timestamp_column):
+        query = """
+        INSERT INTO ema_cross (ticker_id, interval, span, timestamp_column) 
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (ticker_id, interval, span, timestamp_column) DO NOTHING
+        """
+        await self.pool.execute(query, ticker_id, interval, span, timestamp_column)
+
+    async def get_ema_cross_count(self, ticker_id, interval, span, start_time, end_time):
+        query = """
+        SELECT COUNT(*)
+        FROM ema_cross 
+        WHERE ticker_id = $1 AND interval = $2 AND span = $3 AND timestamp_column BETWEEN $4 AND $5
+        """
+        result = await self.pool.fetchval(query, ticker_id, interval, span, start_time, end_time)
+        return result
