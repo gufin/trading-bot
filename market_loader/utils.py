@@ -126,12 +126,23 @@ def to_end_of_day(date: datetime) -> datetime:
 
 
 def get_rebound_message(ticker_name: str, current_ema: Ema, older_ema: Ema, interval: CandleInterval,
-                        older_interval: CandleInterval, latest_candle: Candle, prev_candle: Candle, cross_count: int):
-    return (f'<b>#{ticker_name}</b> пересек EMA {int(current_ema.span)} ({current_ema.ema}) в интервале '
+                        older_interval: CandleInterval, latest_candle: Candle, prev_candle: Candle, cross_count: int,
+                        type_msg: str) -> str:
+    if type_msg == 'SHORT':
+        candle_part = 'High'
+        candle_val = latest_candle.high
+        prev_candle_val = prev_candle.high
+    else:
+        candle_part = 'Low'
+        candle_val = latest_candle.low
+        prev_candle_val = prev_candle.low
+
+    return (f'<b>{type_msg} #{ticker_name}</b> пересек EMA {int(current_ema.span)} ({current_ema.ema}) в интервале '
             f'{get_interval_form_str(interval.value)}.\nВремя: {convert_utc_to_local(current_ema.timestamp_column)}.\n'
             f'ATR: {current_ema.atr}.\nКоличество пересечений за последние {ema_cross_window} часа: {cross_count}.\n'
-            f'Low свечи: {latest_candle.low}. Время свечи: {convert_utc_to_local(latest_candle.timestamp_column)}.\n'
-            f'Low предыдущей свечи: {prev_candle.low}. Время свечи '
+            f'{candle_part} свечи: {candle_val}. '
+            f'Время свечи: {convert_utc_to_local(latest_candle.timestamp_column)}.\n'
+            f'{candle_part} предыдущей свечи: {prev_candle_val}. Время свечи '
             f'{convert_utc_to_local(prev_candle.timestamp_column)}.\n'
             f'Старшая EMA {older_ema.span} в интервале {get_interval_form_str(older_interval.value)}: {older_ema.ema}.'
             f' Время: {convert_utc_to_local(older_ema.timestamp_column)}.\n'
