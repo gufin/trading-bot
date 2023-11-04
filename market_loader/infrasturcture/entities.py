@@ -35,6 +35,7 @@ class UserModel(Base):
     user_id = Column(BIGINT, primary_key=True, autoincrement=True)
     name = Column(String(32), nullable=False)
     lang = Column(String(20), nullable=True)
+    disable = Column(Boolean, default=False)
 
     user_strategies = relationship('UserStrategyModel', back_populates='user')
     user_tickers = relationship('UserTickerModel', back_populates='user')
