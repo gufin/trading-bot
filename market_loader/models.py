@@ -59,7 +59,7 @@ class CandleInterval(Enum):
 
 
 class Candle(BaseModel):
-    timestamp_column: str
+    timestamp_column: datetime
     open: float
     high: float
     low: float

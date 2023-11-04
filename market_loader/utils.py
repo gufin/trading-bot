@@ -87,8 +87,7 @@ def need_for_calculation(cls, interval: str, current_time: datetime, update_time
         return True
 
 
-def convert_utc_to_local(utc_str: str) -> str:
-    utc_time = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
+def convert_utc_to_local(utc_time: datetime) -> str:
     utc_time = pytz.utc.localize(utc_time)
     local_tz = get_localzone()
 
@@ -151,6 +150,22 @@ def get_rebound_message(ticker_name: str, current_ema: Ema, older_ema: Ema, inte
             f' Время: {convert_utc_to_local(older_ema.timestamp_column)}.\n'
             f'<a href="{make_tw_link(ticker_name, interval.value)}">График tradingview</a>')
 
+
+def transform_candle_result(result) -> dict:
+    candles_dict = {}
+    for row in result.mappings():
+        candle = Candle(
+            timestamp_column=row['timestamp_column'],
+            open=row['open'],
+            high=row['high'],
+            low=row['low'],
+            close=row['close']
+        )
+        if row['ticker_id'] in candles_dict:
+            candles_dict[row['ticker_id']].append(candle)
+        else:
+            candles_dict[row['ticker_id']] = [candle]
+    return candles_dict
 
 class MaxRetriesExceededError(Exception):
     def __init__(self, message="Max retries exceeded"):

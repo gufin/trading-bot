@@ -28,3 +28,4 @@ pydantic
 pandas
 loguru
 ta-lib
+sqlalchemy
