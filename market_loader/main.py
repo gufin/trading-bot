@@ -14,33 +14,9 @@ from market_loader.strategy_evaluator import StrategyEvaluator
 from market_loader.technical_indicators_calculator import TechnicalIndicatorsCalculator
 
 load_dotenv()
-loop = asyncio.get_event_loop()
-# db = Database(
-#     name=os.getenv("PG_NAME"),
-#     user=os.getenv("PG_USER"),
-#     password=os.getenv("PG_PASSWORD"),
-#     host=os.getenv("PG_HOST"),
-#     port=os.getenv("PG_PORT"),
-#     loop=loop,
-# )
-
-name=os.getenv("PG_NAME")
-user=os.getenv("PG_USER")
-password=os.getenv("PG_PASSWORD")
-host=os.getenv("PG_HOST")
-port=os.getenv("PG_PORT")
-
-
-def storage_url():
-    return (
-        f"postgresql+asyncpg://{user}:{password}"
-        f"@{host}:{port}/{name}"
-    )
-
 
 sessionmaker = get_sessionmaker()
 db = BotPostgresRepository(sessionmaker)
-
 
 config = ApiConfig()
 config.token = os.getenv("TOKEN")
@@ -75,4 +51,4 @@ if __name__ == "__main__":
         rotation="30 KB",
         compression="zip",
     )
-    loop.run_until_complete(main())
+    asyncio.run(main())
