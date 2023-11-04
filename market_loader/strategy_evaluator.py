@@ -6,13 +6,14 @@ from loguru import logger
 
 from bot.database import Database
 from market_loader.constants import attempts_to_send_tg_msg, ema_cross_window, tg_send_timeout
+from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.models import CandleInterval, Ema
 from market_loader.utils import get_rebound_message, get_start_time, need_for_calculation
 
 
 class StrategyEvaluator:
 
-    def __init__(self, db: Database, token: str, chat_id: int):
+    def __init__(self, db: BotPostgresRepository, token: str, chat_id: int):
         self.db = db
         self.token = token
         current_time = datetime.now(timezone.utc)
@@ -55,8 +56,7 @@ class StrategyEvaluator:
         logger.info("Завершили проверку стратегии")
 
     async def _save_and_get_cross_count(self, ticker_id: int, interval: CandleInterval, current_ema: Ema) -> int:
-        await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span,
-                                    datetime.strptime(current_ema.timestamp_column, '%Y-%m-%d %H:%M:%S'))
+        await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span,current_ema.timestamp_column)
         end_time = datetime.now(timezone.utc)
         return await self.db.get_ema_cross_count(ticker_id, interval.value, current_ema.span,
                                                  get_start_time(end_time).replace(tzinfo=None),
@@ -106,12 +106,9 @@ class StrategyEvaluator:
                                                                                   start_time)
                 if (current_ema and prev_ema and
                         latest_candle.high >= current_ema.ema and prev_candle.high < prev_ema.ema):
-                    await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span,
-                                                datetime.strptime(current_ema.timestamp_column, '%Y-%m-%d %H:%M:%S'))
-                if current_ema and prev_ema and prev_candle.low > prev_ema.ema and (
-                        latest_candle.low <= current_ema.ema):
-                    await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span,
-                                                datetime.strptime(current_ema.timestamp_column, '%Y-%m-%d %H:%M:%S'))
+                    await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span, current_ema.timestamp_column)
+                if current_ema and prev_ema and prev_candle.low > prev_ema.ema and (latest_candle.low <= current_ema.ema):
+                    await self.db.add_ema_cross(ticker_id, interval.value, current_ema.span,current_ema.timestamp_column)
             start_time = start_time + timedelta(seconds=300)
         self.need_for_cross_update = False
         logger.info("Закончили обновление данных о пересечении EMA")

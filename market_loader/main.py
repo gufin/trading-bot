@@ -5,8 +5,9 @@ from datetime import datetime
 from dotenv import load_dotenv
 from loguru import logger
 
-from bot.database import Database
 from market_loader.constants import mine_circle_sleep_time
+from market_loader.infrasturcture.entities import get_sessionmaker
+from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.loader import MarketDataLoader
 from market_loader.models import ApiConfig
 from market_loader.strategy_evaluator import StrategyEvaluator
@@ -14,14 +15,32 @@ from market_loader.technical_indicators_calculator import TechnicalIndicatorsCal
 
 load_dotenv()
 loop = asyncio.get_event_loop()
-db = Database(
-    name=os.getenv("PG_NAME"),
-    user=os.getenv("PG_USER"),
-    password=os.getenv("PG_PASSWORD"),
-    host=os.getenv("PG_HOST"),
-    port=os.getenv("PG_PORT"),
-    loop=loop,
-)
+# db = Database(
+#     name=os.getenv("PG_NAME"),
+#     user=os.getenv("PG_USER"),
+#     password=os.getenv("PG_PASSWORD"),
+#     host=os.getenv("PG_HOST"),
+#     port=os.getenv("PG_PORT"),
+#     loop=loop,
+# )
+
+name=os.getenv("PG_NAME")
+user=os.getenv("PG_USER")
+password=os.getenv("PG_PASSWORD")
+host=os.getenv("PG_HOST")
+port=os.getenv("PG_PORT")
+
+
+def storage_url():
+    return (
+        f"postgresql+asyncpg://{user}:{password}"
+        f"@{host}:{port}/{name}"
+    )
+
+
+sessionmaker = get_sessionmaker()
+db = BotPostgresRepository(sessionmaker)
+
 
 config = ApiConfig()
 config.token = os.getenv("TOKEN")

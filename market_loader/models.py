@@ -67,15 +67,8 @@ class Candle(BaseModel):
 
 
 class Ema(BaseModel):
-    timestamp_column: str
-    span: int
-    ema: float
-    atr: float
-
-
-class EmaModel(BaseModel):
-    ticker_id: int
-    interval: str
+    ticker_id: int = None
+    interval: str = None
     span: int
     timestamp_column: datetime
     ema: float

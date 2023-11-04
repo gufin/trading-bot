@@ -99,6 +99,9 @@ def convert_to_date(utc_str: str) -> datetime:
     return datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
 
 
+def convert_to_base_date(date: str) -> datetime:
+    return datetime.fromisoformat(date.replace('Z', '+00:00'))
+
 def make_tw_link(ticker: str, interval: str) -> str:
     stock_exchange = 'MOEX'
     return (f'https://www.tradingview.com/chart/?symbol={stock_exchange}:{ticker}'

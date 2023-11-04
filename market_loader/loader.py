@@ -9,14 +9,16 @@ from loguru import logger
 
 from bot.database import Database
 from market_loader.constants import attempts_to_tcs_request, deep_for_hour_candles, tcs_request_timeout
+from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.models import ApiConfig, CandleInterval, FindInstrumentRequest, InstrumentRequest, Ticker
-from market_loader.utils import (dict_to_float, get_correct_time_format, get_interval, MaxRetriesExceededError,
+from market_loader.utils import (convert_to_base_date, dict_to_float, get_correct_time_format, get_interval,
+                                 MaxRetriesExceededError,
                                  round_date, to_end_of_day, to_start_of_day)
 
 
 class MarketDataLoader:
 
-    def __init__(self, db: Database, config: ApiConfig):
+    def __init__(self, db: BotPostgresRepository, config: ApiConfig):
         current_time = datetime.now(timezone.utc)
         self.db = db
         self.config = config
@@ -154,7 +156,7 @@ class MarketDataLoader:
         for candle in response_data['candles']:
             await self.db.add_candle(ticker.ticker_id,
                                      interval.value,
-                                     candle['time'],
+                                     convert_to_base_date(candle['time']).replace(tzinfo=None),
                                      dict_to_float(candle['open']),
                                      dict_to_float(candle['high']),
                                      dict_to_float(candle['low']),

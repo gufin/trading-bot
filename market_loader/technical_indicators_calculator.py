@@ -4,15 +4,15 @@ from datetime import timezone
 from loguru import logger
 from pandas import DataFrame
 
-from bot.database import Database
 from market_loader.constants import atr_period
-from market_loader.models import EmaModel
+from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
+from market_loader.models import Ema
 from market_loader.utils import convert_to_date, get_interval_form_str, need_for_calculation
 
 
 class TechnicalIndicatorsCalculator:
 
-    def __init__(self, db: Database):
+    def __init__(self, db: BotPostgresRepository):
         self.db = db
         current_time = datetime.now(timezone.utc).replace(hour=7, minute=0, second=0, microsecond=0)
         self.last_15_min_update = current_time
@@ -29,11 +29,11 @@ class TechnicalIndicatorsCalculator:
 
         last_ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval, span)
         if last_ema is not None:
-            filtered_df = df[df['timestamp_column'] > convert_to_date(last_ema.timestamp_column)]
+            filtered_df = df[df['timestamp_column'] > last_ema.timestamp_column]
         else:
             filtered_df = df
         list_of_rows = [
-            EmaModel(
+            Ema(
                 ticker_id=ticker_id,
                 interval=interval,
                 span=span,
