@@ -1,8 +1,8 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import (BIGINT, Boolean, Column, ForeignKey, Integer, Numeric, String, TIMESTAMP,
-                        Text, UniqueConstraint)
+from sqlalchemy import (BIGINT, Boolean, Column, ForeignKey, Integer, Numeric, String, Text, TIMESTAMP,
+                        UniqueConstraint)
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -142,7 +142,7 @@ class EMAModel(Base):
     timestamp_column = Column(TIMESTAMP, nullable=False)
     ema = Column(Numeric(10, 3), nullable=False)
     atr = Column(Numeric(10, 3), nullable=False)
-    __table_args__ = (UniqueConstraint('ticker_id', 'interval', 'timestamp_column', name='unique_ema'),)
+    __table_args__ = (UniqueConstraint('ticker_id', 'interval', 'timestamp_column', 'span', name='unique_ema'),)
 
     ticker = relationship('TickerModel', back_populates='ema')
 
@@ -150,14 +150,13 @@ class EMAModel(Base):
 class EMACrossModel(Base):
     __tablename__ = 'ema_cross'
 
-    ema_cross_id = Column(BIGINT,
-                          primary_key=True)  # для autoincrement BIGSERIAL в SQLAlchemy достаточно BIGINT с primary_key=True
+    ema_cross_id = Column(BIGINT, primary_key=True)
     ticker_id = Column(BIGINT, ForeignKey('tickers.ticker_id'), nullable=False)
     interval = Column(String(64), nullable=False)
     span = Column(Integer, nullable=False)
     timestamp_column = Column(TIMESTAMP, nullable=False)
 
-    __table_args__ = (UniqueConstraint('ticker_id', 'interval', 'span', 'timestamp_column', name='unique_ema_cross_combination'),)
+    __table_args__ = (UniqueConstraint(
+        'ticker_id', 'interval', 'span', 'timestamp_column', name='unique_ema_cross_combination'),)
 
-    # Определение связи с TickerModel
     ticker = relationship('TickerModel', back_populates='ema_cross')

@@ -168,10 +168,18 @@ class BotPostgresRepository:
                 where(CandleModel.ticker_id == ticker_id, CandleModel.interval == interval).
                 order_by(CandleModel.timestamp_column)
             )
-            return pd.DataFrame(
-                result.all(),
-                columns=['timestamp_column', 'close', 'open', 'high', 'low'],
-            )
+            candles = result.scalars().all()
+            candles_data = [
+                {
+                    'timestamp_column': candle.timestamp_column,
+                    'close': candle.close,
+                    'open': candle.open,
+                    'high': candle.high,
+                    'low': candle.low
+                }
+                for candle in candles
+            ]
+            return pd.DataFrame(candles_data)
 
     async def add_ema(self, ticker_id: int, interval: str, span: int, timestamp_column: datetime, ema_value: float,
                       atr: float) -> None:

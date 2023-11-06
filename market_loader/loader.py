@@ -7,7 +7,6 @@ import httpx
 from httpx import Response
 from loguru import logger
 
-from bot.database import Database
 from market_loader.constants import attempts_to_tcs_request, deep_for_hour_candles, tcs_request_timeout
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.models import ApiConfig, CandleInterval, FindInstrumentRequest, InstrumentRequest, Ticker
@@ -165,16 +164,17 @@ class MarketDataLoader:
 
     async def _load_and_save_ticker_interval(self, ticker: Ticker, interval: CandleInterval, start_time: datetime,
                                              end_time: datetime) -> None:
-        logger.info(
-            f"Загрузка | интервал: {get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}")
-        response_data = await self._get_ticker_candles(ticker.figi, start_time, end_time, interval)
-        if response_data:
-            if 'candles' in response_data:
-                await self._save_candles(response_data, ticker, interval)
-            else:
-                logger.error(
-                    (f"Ошибка записи свечей | интервал: {get_interval(interval)}; тикер: {ticker.name}; id: "
-                     f"{ticker.ticker_id}; время с {end_time} по {start_time}"))
+        if start_time.weekday() < 5:
+            logger.info(
+                f"Загрузка | интервал: {get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}")
+            response_data = await self._get_ticker_candles(ticker.figi, start_time, end_time, interval)
+            if response_data:
+                if 'candles' in response_data:
+                    await self._save_candles(response_data, ticker, interval)
+                else:
+                    logger.error(
+                        (f"Ошибка записи свечей | интервал: {get_interval(interval)}; тикер: {ticker.name}; id: "
+                         f"{ticker.ticker_id}; время с {end_time} по {start_time}"))
 
     async def load_data(self) -> None:
         await self._update_tickers()
