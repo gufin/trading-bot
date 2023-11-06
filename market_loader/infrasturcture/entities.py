@@ -1,17 +1,17 @@
 import os
 
-from sqlalchemy import (BIGINT, Boolean, Column, ForeignKey, Integer, Numeric, String, Text, TIMESTAMP,
-                        UniqueConstraint)
+from dotenv import load_dotenv
+from sqlalchemy import (BIGINT, Boolean, Column, ForeignKey, Integer, Numeric, String, TIMESTAMP,
+                        Text, UniqueConstraint)
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, relationship
 
-from dotenv import load_dotenv
 load_dotenv()
-name=os.getenv("PG_NAME")
-user=os.getenv("PG_USER")
-password=os.getenv("PG_PASSWORD")
-host=os.getenv("PG_HOST")
-port=os.getenv("PG_PORT")
+name = os.getenv("PG_NAME")
+user = os.getenv("PG_USER")
+password = os.getenv("PG_PASSWORD")
+host = os.getenv("PG_HOST")
+port = os.getenv("PG_PORT")
 
 
 def storage_url():
@@ -19,6 +19,7 @@ def storage_url():
         f"postgresql+asyncpg://{user}:{password}"
         f"@{host}:{port}/{name}"
     )
+
 
 engine = create_async_engine(storage_url(), echo=False)
 Base = declarative_base()
@@ -69,7 +70,8 @@ class UserStrategyModel(Base):
     strategy_id = Column(BIGINT, ForeignKey('strategies.strategy_id'), nullable=False)
     timeframe_id = Column(BIGINT, ForeignKey('timeframes.timeframe_id'), nullable=False)
 
-    __table_args__ = (UniqueConstraint('user_id', 'strategy_id', 'timeframe_id', name='unique_user_strategy_timeframe'),)
+    __table_args__ = (UniqueConstraint('user_id', 'strategy_id', 'timeframe_id',
+                                       name='unique_user_strategy_timeframe'),)
 
     user = relationship('UserModel', back_populates='user_strategies')
     strategy = relationship('StrategyModel', back_populates='user_strategies')
@@ -148,7 +150,8 @@ class EMAModel(Base):
 class EMACrossModel(Base):
     __tablename__ = 'ema_cross'
 
-    ema_cross_id = Column(BIGINT, primary_key=True)  # для autoincrement BIGSERIAL в SQLAlchemy достаточно BIGINT с primary_key=True
+    ema_cross_id = Column(BIGINT,
+                          primary_key=True)  # для autoincrement BIGSERIAL в SQLAlchemy достаточно BIGINT с primary_key=True
     ticker_id = Column(BIGINT, ForeignKey('tickers.ticker_id'), nullable=False)
     interval = Column(String(64), nullable=False)
     span = Column(Integer, nullable=False)

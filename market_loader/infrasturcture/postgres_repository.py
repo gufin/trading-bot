@@ -121,15 +121,15 @@ class BotPostgresRepository:
         async with self.sessionmaker() as session:
             result = await session.execute(
                 update(TickerModel).where(TickerModel.ticker_id == ticker_id).
-                values(figi=new_figi, classCode=new_class_code, currency=new_currency).
+                values(figi=new_figi, classcode=new_class_code, currency=new_currency).
                 returning(TickerModel)
             )
             await session.commit()
-            if row := result.fetchone():
+            if row := result.scalars().first():
                 return Ticker(
                     ticker_id=row.ticker_id,
                     figi=row.figi,
-                    classCode=row.classCode,
+                    classCode=row.classcode,
                     currency=row.currency,
                     name=row.name
                 )
