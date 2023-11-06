@@ -1,5 +1,7 @@
 from enum import Enum
 from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -73,3 +75,9 @@ class Ema(BaseModel):
     timestamp_column: datetime
     ema: float
     atr: float = 0
+
+
+class ReboundParam(BaseModel):
+    cross_count_4: int
+    cross_count_1: int
+    hour_candle: Optional[Candle] = None

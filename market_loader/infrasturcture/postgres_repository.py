@@ -301,7 +301,7 @@ class BotPostgresRepository:
             return row.timestamp_column.replace(tzinfo=timezone.utc, microsecond=999999) if row else datetime.now(
                 timezone.utc) - timedelta(days=60)
 
-    async def add_ema_cross(self, ticker_id: int, interval: str, span: int, timestamp_column) -> None:
+    async def add_ema_cross(self, ticker_id: int, interval: str, span: int, timestamp_column) -> bool:
         async with self.sessionmaker() as session:
             await session.merge(
                 EMACrossModel(
@@ -313,8 +313,10 @@ class BotPostgresRepository:
             )
             try:
                 await session.commit()
+                return True
             except IntegrityError:
                 await session.rollback()
+                return False
 
     async def get_ema_cross_count(self, ticker_id: int, interval: str, span: int, start_time: datetime,
                                   end_time: datetime) -> int:
@@ -450,3 +452,22 @@ class BotPostgresRepository:
 
             result = await session.execute(sql, {'interval': interval, 'timestamp': timestamp})
             return transform_candle_result(result)
+
+    async def get_last_candle(self, ticker_id: int, interval: str) -> Optional[Candle]:
+        async with self.sessionmaker() as session:
+            result = await session.execute(
+                select(CandleModel)
+                .where(CandleModel.ticker_id == ticker_id, CandleModel.interval == interval)
+                .order_by(CandleModel.timestamp_column.desc())
+                .limit(1)
+            )
+            if candle_model := result.scalars().first():
+                return Candle(
+                    timestamp_column=candle_model.timestamp_column,
+                    open=float(candle_model.open),
+                    high=float(candle_model.high),
+                    low=float(candle_model.low),
+                    close=float(candle_model.close)
+                )
+            else:
+                return None
