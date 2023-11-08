@@ -8,7 +8,7 @@ import pandas as pd
 from loguru import logger
 from pandas import DataFrame
 
-from market_loader.models import Candle, CandleInterval, Ema, EmaModel, EmaToCalc, Ticker, TickerToUpdateEma
+from market_loader.models import Candle, CandleInterval, Ema, EmaToCalc, Ticker, TickerToUpdateEma
 
 
 class Database:
@@ -397,7 +397,7 @@ class Database:
         return [(record['ticker_id'], record['interval'], record['span'], record['timestamp_column']) for record in
                 records]
 
-    async def bulk_add_ema(self, ema_models: list[EmaModel]):
+    async def bulk_add_ema(self, ema_models: list[Ema]):
         # Преобразование списка моделей в список кортежей
         records = [(model.ticker_id, model.interval, model.span, model.timestamp_column, model.ema, model.atr) for
                    model in ema_models]

@@ -1,5 +1,7 @@
 from enum import Enum
 from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -59,7 +61,7 @@ class CandleInterval(Enum):
 
 
 class Candle(BaseModel):
-    timestamp_column: str
+    timestamp_column: datetime
     open: float
     high: float
     low: float
@@ -67,16 +69,15 @@ class Candle(BaseModel):
 
 
 class Ema(BaseModel):
-    timestamp_column: str
-    span: int
-    ema: float
-    atr: float
-
-
-class EmaModel(BaseModel):
-    ticker_id: int
-    interval: str
+    ticker_id: int = None
+    interval: str = None
     span: int
     timestamp_column: datetime
     ema: float
     atr: float = 0
+
+
+class ReboundParam(BaseModel):
+    cross_count_4: int
+    cross_count_1: int
+    hour_candle: Optional[Candle] = None

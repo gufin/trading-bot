@@ -87,8 +87,7 @@ def need_for_calculation(cls, interval: str, current_time: datetime, update_time
         return True
 
 
-def convert_utc_to_local(utc_str: str) -> str:
-    utc_time = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
+def convert_utc_to_local(utc_time: datetime) -> str:
     utc_time = pytz.utc.localize(utc_time)
     local_tz = get_localzone()
 
@@ -99,17 +98,20 @@ def convert_to_date(utc_str: str) -> datetime:
     return datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
 
 
+def convert_to_base_date(date: str) -> datetime:
+    return datetime.fromisoformat(date.replace('Z', '+00:00'))
+
 def make_tw_link(ticker: str, interval: str) -> str:
     stock_exchange = 'MOEX'
     return (f'https://www.tradingview.com/chart/?symbol={stock_exchange}:{ticker}'
             f'&interval={get_interval_form_str_for_tw(interval)}')
 
 
-def get_start_time(end_time: datetime) -> datetime:
-    if end_time.hour >= (trade_start_hour + ema_cross_window):
-        return end_time - timedelta(hours=ema_cross_window)
+def get_start_time(end_time: datetime, cross_window: int) -> datetime:
+    if end_time.hour >= (trade_start_hour + cross_window):
+        return end_time - timedelta(hours=cross_window)
     elif trade_start_hour <= end_time.hour <= trade_end_hour:
-        delta_hours = (trade_start_hour + ema_cross_window) - end_time.hour
+        delta_hours = (trade_start_hour + cross_window) - end_time.hour
         delta_days = 3 if end_time.weekday() == 0 else 1
         return ((end_time - timedelta(days=delta_days)).replace(hour=trade_end_hour, minute=50)
                 - timedelta(hours=delta_hours)).replace(tzinfo=None)
@@ -148,6 +150,22 @@ def get_rebound_message(ticker_name: str, current_ema: Ema, older_ema: Ema, inte
             f' Время: {convert_utc_to_local(older_ema.timestamp_column)}.\n'
             f'<a href="{make_tw_link(ticker_name, interval.value)}">График tradingview</a>')
 
+
+def transform_candle_result(result) -> dict:
+    candles_dict = {}
+    for row in result.mappings():
+        candle = Candle(
+            timestamp_column=row['timestamp_column'],
+            open=row['open'],
+            high=row['high'],
+            low=row['low'],
+            close=row['close']
+        )
+        if row['ticker_id'] in candles_dict:
+            candles_dict[row['ticker_id']].append(candle)
+        else:
+            candles_dict[row['ticker_id']] = [candle]
+    return candles_dict
 
 class MaxRetriesExceededError(Exception):
     def __init__(self, message="Max retries exceeded"):
