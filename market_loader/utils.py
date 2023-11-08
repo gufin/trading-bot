@@ -101,6 +101,7 @@ def convert_to_date(utc_str: str) -> datetime:
 def convert_to_base_date(date: str) -> datetime:
     return datetime.fromisoformat(date.replace('Z', '+00:00'))
 
+
 def make_tw_link(ticker: str, interval: str) -> str:
     stock_exchange = 'MOEX'
     return (f'https://www.tradingview.com/chart/?symbol={stock_exchange}:{ticker}'
@@ -127,6 +128,13 @@ def to_end_of_day(date: datetime) -> datetime:
     return date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
 
+def calculate_percentage(part: float, whole: float) -> float:
+    try:
+        return round((part / whole) * 100, 2)
+    except ZeroDivisionError:
+        return 0
+
+
 def get_rebound_message(ticker_name: str, current_ema: Ema, older_ema: Ema, interval: CandleInterval,
                         older_interval: CandleInterval, latest_candle: Candle, prev_candle: Candle, cross_count: int,
                         type_msg: str) -> str:
@@ -141,7 +149,8 @@ def get_rebound_message(ticker_name: str, current_ema: Ema, older_ema: Ema, inte
 
     return (f'<b>{type_msg} #{ticker_name}</b> пересек EMA {int(current_ema.span)} ({current_ema.ema}) в интервале '
             f'{get_interval_form_str(interval.value)}.\nВремя: {convert_utc_to_local(current_ema.timestamp_column)}.\n'
-            f'ATR: {current_ema.atr}.\nКоличество пересечений за последние {ema_cross_window} часа: {cross_count}.\n'
+            f'ATR: {calculate_percentage(current_ema.atr, current_ema.ema)}%.\nКоличество пересечений за последние '
+            f'{ema_cross_window} часа: {cross_count}.\n'
             f'{candle_part} свечи: {candle_val}. '
             f'Время свечи: {convert_utc_to_local(latest_candle.timestamp_column)}.\n'
             f'{candle_part} предыдущей свечи: {prev_candle_val}. Время свечи '
@@ -166,6 +175,7 @@ def transform_candle_result(result) -> dict:
         else:
             candles_dict[row['ticker_id']] = [candle]
     return candles_dict
+
 
 class MaxRetriesExceededError(Exception):
     def __init__(self, message="Max retries exceeded"):
