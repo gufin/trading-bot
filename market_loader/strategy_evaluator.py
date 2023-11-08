@@ -79,7 +79,7 @@ class StrategyEvaluator:
             if curr_ema and prev_ema and latest_candle.high >= curr_ema.ema and prev_candle.high < prev_ema.ema:
                 params = await self._get_rebound_params(ticker_id, interval, curr_ema)
                 if (params.hour_candle and 1 <= params.cross_count_4 <= 2 and curr_ema.ema < older_ema.ema
-                        and params.cross_count_1 == 0 and params.hour_candle.open < curr_ema.ema):
+                        and params.cross_count_1 == 1 and params.hour_candle.open < curr_ema.ema):
                     message = get_rebound_message(ticker_name, curr_ema, older_ema, interval, older_interval,
                                                   latest_candle, prev_candle, params.cross_count_4, 'SHORT')
                     await self.send_telegram_message(message)
@@ -87,7 +87,7 @@ class StrategyEvaluator:
             if curr_ema and prev_ema and prev_candle.low > prev_ema.ema and (latest_candle.low <= curr_ema.ema):
                 params = await self._get_rebound_params(ticker_id, interval, curr_ema)
                 if (params.hour_candle and 1 <= params.cross_count_4 <= 2 and curr_ema.ema > older_ema.ema
-                        and params.cross_count_1 == 0 and params.hour_candle.open > curr_ema.ema):
+                        and params.cross_count_1 == 1 and params.hour_candle.open > curr_ema.ema):
                     message = get_rebound_message(ticker_name, curr_ema, older_ema, interval, older_interval,
                                                   latest_candle, prev_candle, params.cross_count_4, 'LONG')
                     await self.send_telegram_message(message)
