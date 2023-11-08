@@ -7,9 +7,9 @@ import httpx
 from httpx import Response
 from loguru import logger
 
-from market_loader.constants import attempts_to_tcs_request, deep_for_hour_candles, tcs_request_timeout
+from market_loader.settings import settings
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
-from market_loader.models import ApiConfig, CandleInterval, FindInstrumentRequest, InstrumentRequest, Ticker
+from market_loader.models import CandleInterval, FindInstrumentRequest, InstrumentRequest, Ticker
 from market_loader.utils import (convert_to_base_date, dict_to_float, get_correct_time_format, get_interval,
                                  MaxRetriesExceededError,
                                  round_date, to_end_of_day, to_start_of_day)
@@ -17,10 +17,9 @@ from market_loader.utils import (convert_to_base_date, dict_to_float, get_correc
 
 class MarketDataLoader:
 
-    def __init__(self, db: BotPostgresRepository, config: ApiConfig):
+    def __init__(self, db: BotPostgresRepository):
         current_time = datetime.now(timezone.utc)
         self.db = db
-        self.config = config
         self.time_counter = 0
         self.last_request_time = current_time
         self.instrument_query_counter = 0
@@ -49,26 +48,26 @@ class MarketDataLoader:
 
         async with httpx.AsyncClient() as client:
             attempts = 0
-            while attempts < attempts_to_tcs_request:
+            while attempts < settings.attempts_to_tcs_request:
                 try:
                     return await client.post(url, headers=headers, json=json)
                 except Exception as e:
                     attempts += 1
                     logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
-                    await asyncio.sleep(tcs_request_timeout)
+                    await asyncio.sleep(settings.tcs_request_timeout)
 
-        raise MaxRetriesExceededError(f"Не удалось выполнить запрос после {attempts_to_tcs_request} попыток.")
+        raise MaxRetriesExceededError(f"Не удалось выполнить запрос после {settings.attempts_to_tcs_request} попыток.")
 
     async def _update_tickers(self) -> None:
         logger.info("Начали инициализацию тикеров")
         tickers = await self.db.get_tickers_without_figi()
         headers = {
-            "Authorization": f"Bearer {self.config.token}"
+            "Authorization": f"Bearer {settings.token}"
         }
 
         for ticker in tickers:
             data = FindInstrumentRequest(query=ticker.name)
-            url = f"{self.config.base_url}{self.config.find_instrument}"
+            url = f"{settings.base_url}{settings.find_instrument}"
             response = await self._request_with_count(url=url, headers=headers,
                                                       json=data.model_dump(), query_type='instrument')
             if response.status_code == HTTPStatus.OK:
@@ -76,7 +75,7 @@ class MarketDataLoader:
                 ticker_data = next(
                     (item for item in response_data['instruments'] if item["ticker"] == ticker.name), None)
                 if ticker_data is not None:
-                    share_url = f"{self.config.base_url}{self.config.share_by}"
+                    share_url = f"{settings.base_url}{settings.share_by}"
                     share_request = InstrumentRequest(classCode=ticker_data['classCode'], id=ticker.name)
                     share_response = await self._request_with_count(url=share_url, headers=headers,
                                                                     json=share_request.model_dump(),
@@ -125,7 +124,7 @@ class MarketDataLoader:
         await self._minute_ticker_data(ticker, current_time, four_weeks_ago, CandleInterval.min_15)
 
         current_time = datetime.now(timezone.utc)
-        days_ago = current_time - timedelta(days=deep_for_hour_candles)
+        days_ago = current_time - timedelta(days=settings.deep_for_hour_candles)
         await self._hour_ticker_data(ticker, current_time, days_ago)
 
         current_time = datetime.now(timezone.utc)
@@ -135,7 +134,7 @@ class MarketDataLoader:
     async def _get_ticker_candles(self, figi: str, last_update: datetime, current_time_utc: datetime,
                                   interval: CandleInterval) -> dict:
         headers = {
-            "Authorization": f"Bearer {self.config.token}"
+            "Authorization": f"Bearer {settings.token}"
         }
         request = {
             "figi": figi,
@@ -144,7 +143,7 @@ class MarketDataLoader:
             "interval": interval.value,
             "instrumentId": figi
         }
-        url = f"{self.config.base_url}{self.config.get_candles}"
+        url = f"{settings.base_url}{settings.get_candles}"
         response = await self._request_with_count(url=url, headers=headers, json=request, query_type='market')
         return response.json() if response.status_code == HTTPStatus.OK else None
 

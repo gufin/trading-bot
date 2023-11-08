@@ -1,10 +1,11 @@
+import uuid
 from datetime import datetime, timedelta
 
 import pytz
 from tzlocal import get_localzone
 
-from market_loader.constants import ema_cross_window, trade_end_hour, trade_start_hour
-from market_loader.models import Candle, CandleInterval, Ema
+from market_loader.settings import settings
+from market_loader.models import Candle, CandleInterval, Ema, Price
 
 
 def dict_to_float(num_dict: dict) -> float:
@@ -109,12 +110,12 @@ def make_tw_link(ticker: str, interval: str) -> str:
 
 
 def get_start_time(end_time: datetime, cross_window: int) -> datetime:
-    if end_time.hour >= (trade_start_hour + cross_window):
+    if end_time.hour >= (settings.trade_start_hour + cross_window):
         return end_time - timedelta(hours=cross_window)
-    elif trade_start_hour <= end_time.hour <= trade_end_hour:
-        delta_hours = (trade_start_hour + cross_window) - end_time.hour
+    elif settings.trade_start_hour <= end_time.hour <= settings.trade_end_hour:
+        delta_hours = (settings.trade_start_hour + cross_window) - end_time.hour
         delta_days = 3 if end_time.weekday() == 0 else 1
-        return ((end_time - timedelta(days=delta_days)).replace(hour=trade_end_hour, minute=50)
+        return ((end_time - timedelta(days=delta_days)).replace(hour=settings.trade_end_hour, minute=50)
                 - timedelta(hours=delta_hours)).replace(tzinfo=None)
     else:
         return end_time.replace(tzinfo=None)
@@ -150,7 +151,7 @@ def get_rebound_message(ticker_name: str, current_ema: Ema, older_ema: Ema, inte
     return (f'<b>{type_msg} #{ticker_name}</b> пересек EMA {int(current_ema.span)} ({current_ema.ema}) в интервале '
             f'{get_interval_form_str(interval.value)}.\nВремя: {convert_utc_to_local(current_ema.timestamp_column)}.\n'
             f'ATR: {calculate_percentage(current_ema.atr, current_ema.ema)}%.\nКоличество пересечений за последние '
-            f'{ema_cross_window} часа: {cross_count}.\n'
+            f'{settings.ema_cross_window} часа: {cross_count}.\n'
             f'{candle_part} свечи: {candle_val}. '
             f'Время свечи: {convert_utc_to_local(latest_candle.timestamp_column)}.\n'
             f'{candle_part} предыдущей свечи: {prev_candle_val}. Время свечи '
@@ -175,6 +176,16 @@ def transform_candle_result(result) -> dict:
         else:
             candles_dict[row['ticker_id']] = [candle]
     return candles_dict
+
+
+def get_uuid():
+    return str(uuid.uuid4())
+
+
+def price_to_units_and_nano(price: float) -> Price:
+    units = int(price)
+    nano = int((price - units) * 1_000_000_000)
+    return Price(units=units, nano=nano)
 
 
 class MaxRetriesExceededError(Exception):

@@ -4,10 +4,10 @@ from datetime import timezone
 from loguru import logger
 from pandas import DataFrame
 
-from market_loader.constants import atr_period
+from market_loader.settings import settings
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.models import Ema
-from market_loader.utils import convert_to_date, get_interval_form_str, need_for_calculation
+from market_loader.utils import get_interval_form_str, need_for_calculation
 
 
 class TechnicalIndicatorsCalculator:
@@ -25,7 +25,7 @@ class TechnicalIndicatorsCalculator:
         df['high_minus_close_prev'] = abs(df['high'] - df['close'].shift(1))
         df['low_minus_close_prev'] = abs(df['low'] - df['close'].shift(1))
         df['tr'] = df[['high_minus_low', 'high_minus_close_prev', 'low_minus_close_prev']].max(axis=1)
-        df['atr'] = df['tr'].rolling(window=atr_period).mean()
+        df['atr'] = df['tr'].rolling(window=settings.atr_period).mean()
 
         last_ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval, span)
         if last_ema is not None:

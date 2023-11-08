@@ -7,7 +7,8 @@ from sqlalchemy import exists, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
-from market_loader.infrasturcture.entities import (CandleModel, EMACrossModel, EMAModel, EMAToCalcModel, StrategyModel,
+from market_loader.infrasturcture.entities import (BrokerAccount, CandleModel, EMACrossModel, EMAModel, EMAToCalcModel,
+                                                   StrategyModel,
                                                    TickerModel,
                                                    TimeframeModel, UserModel,
                                                    UserStrategyModel, UserTickerModel)
@@ -471,3 +472,12 @@ class BotPostgresRepository:
                 )
             else:
                 return None
+
+    async def get_user_account(self, user_id: int) -> Optional[str]:
+        async with self.sessionmaker() as session:
+            result = await session.execute(
+                select(BrokerAccount.broker_id)
+                .where(BrokerAccount.user_id == user_id)
+            )
+            broker_id = result.scalars().first()
+            return broker_id

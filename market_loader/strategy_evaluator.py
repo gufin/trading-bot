@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from loguru import logger
 
-from market_loader.constants import attempts_to_send_tg_msg, ema_cross_window, tg_send_timeout
+from market_loader.settings import settings
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.models import CandleInterval, Ema, ReboundParam
 from market_loader.utils import get_rebound_message, get_start_time, need_for_calculation
@@ -12,36 +12,33 @@ from market_loader.utils import get_rebound_message, get_start_time, need_for_ca
 
 class StrategyEvaluator:
 
-    def __init__(self, db: BotPostgresRepository, token: str, chat_id: int):
+    def __init__(self, db: BotPostgresRepository):
         self.db = db
-        self.token = token
         current_time = datetime.now(timezone.utc)
         self.last_15_min_update = current_time
         self.last_hour_update = current_time
         self.last_day_update = current_time
-        self.chat_id = chat_id
-        self.ema_window_count = ema_cross_window
         self.need_for_cross_update = True
 
     async def send_telegram_message(self, text: str) -> None:
-        base_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        base_url = f"https://api.telegram.org/bot{settings.token}/sendMessage"
 
         payload = {
-            "chat_id": self.chat_id,
+            "chat_id": settings.chat_id,
             "text": text,
             "parse_mode": "HTML",
             "disable_web_page_preview": True
         }
         async with httpx.AsyncClient() as client:
             attempts = 0
-            while attempts < attempts_to_send_tg_msg:
+            while attempts < settings.attempts_to_send_tg_msg:
                 try:
                     await client.post(base_url, data=payload)
                     break
                 except Exception as e:
                     attempts += 1
                     logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
-                    await asyncio.sleep(tg_send_timeout)
+                    await asyncio.sleep(settings.tg_send_timeout)
 
     async def check_strategy(self) -> None:
         logger.info("Начали проверку стратегии")
@@ -59,7 +56,8 @@ class StrategyEvaluator:
         if not_exist:
             end_time = datetime.now(timezone.utc)
             return await self.db.get_ema_cross_count(ticker_id, interval.value, curr_ema.span,
-                                                     get_start_time(end_time, ema_cross_window).replace(tzinfo=None),
+                                                     get_start_time(end_time,
+                                                                    settings.ema_cross_window).replace(tzinfo=None),
                                                      end_time.replace(tzinfo=None))
         else:
             return -1
@@ -110,7 +108,7 @@ class StrategyEvaluator:
         span = 200
 
         end_time = datetime.now(timezone.utc).replace(tzinfo=None)
-        start_time = get_start_time(end_time, ema_cross_window).replace(tzinfo=None)
+        start_time = get_start_time(end_time, settings.ema_cross_window).replace(tzinfo=None)
         while start_time < end_time:
             candles = await self.db.get_two_candles_for_each_ticker_by_period(interval.value, start_time)
             for ticker_id in candles:

@@ -2,32 +2,21 @@ import asyncio
 import os
 from datetime import datetime
 
-from dotenv import load_dotenv
 from loguru import logger
 
-from market_loader.constants import mine_circle_sleep_time
+from market_loader.settings import settings
 from market_loader.infrasturcture.entities import get_sessionmaker
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.loader import MarketDataLoader
-from market_loader.models import ApiConfig
 from market_loader.strategy_evaluator import StrategyEvaluator
 from market_loader.technical_indicators_calculator import TechnicalIndicatorsCalculator
-
-load_dotenv()
 
 sessionmaker = get_sessionmaker()
 db = BotPostgresRepository(sessionmaker)
 
-config = ApiConfig()
-config.token = os.getenv("TOKEN")
-config.base_url = "https://invest-public-api.tinkoff.ru/rest/"
-config.share_by = "tinkoff.public.invest.api.contract.v1.InstrumentsService/ShareBy"
-config.get_candles = "tinkoff.public.invest.api.contract.v1.MarketDataService/GetCandles"
-config.find_instrument = "tinkoff.public.invest.api.contract.v1.InstrumentsService/FindInstrument"
-
-loader = MarketDataLoader(db=db, config=config)
+loader = MarketDataLoader(db=db)
 ti_calculator = TechnicalIndicatorsCalculator(db=db)
-strategy_evaluator = StrategyEvaluator(db=db, token=os.getenv("BOT_TOKEN"), chat_id=int(os.getenv("DEBUG_CHAT_ID")))
+strategy_evaluator = StrategyEvaluator(db=db)
 
 
 async def main():
@@ -38,7 +27,7 @@ async def main():
         await ti_calculator.calculate()
         await strategy_evaluator.check_strategy()
         end_time = datetime.now()
-        sleep_time = mine_circle_sleep_time - (end_time - start_time).total_seconds()
+        sleep_time = settings.mine_circle_sleep_time - (end_time - start_time).total_seconds()
         if sleep_time > 0:
             await asyncio.sleep(sleep_time)
 

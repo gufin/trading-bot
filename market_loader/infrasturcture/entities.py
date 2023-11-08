@@ -1,27 +1,11 @@
-import os
-
-from dotenv import load_dotenv
 from sqlalchemy import (BIGINT, Boolean, Column, ForeignKey, Integer, Numeric, String, Text, TIMESTAMP,
                         UniqueConstraint)
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, relationship
 
-load_dotenv()
-name = os.getenv("PG_NAME")
-user = os.getenv("PG_USER")
-password = os.getenv("PG_PASSWORD")
-host = os.getenv("PG_HOST")
-port = os.getenv("PG_PORT")
+from market_loader.settings import settings
 
-
-def storage_url():
-    return (
-        f"postgresql+asyncpg://{user}:{password}"
-        f"@{host}:{port}/{name}"
-    )
-
-
-engine = create_async_engine(storage_url(), echo=False)
+engine = create_async_engine(settings.storage_url, echo=False)
 Base = declarative_base()
 metadata = Base.metadata
 
@@ -160,3 +144,13 @@ class EMACrossModel(Base):
         'ticker_id', 'interval', 'span', 'timestamp_column', name='unique_ema_cross_combination'),)
 
     ticker = relationship('TickerModel', back_populates='ema_cross')
+
+
+class BrokerAccount(Base):
+    __tablename__ = 'broker_account'
+
+    id = Column(BIGINT, primary_key=True)
+    broker_id = Column(String(64), nullable=False)
+    user_id = Column(BIGINT, ForeignKey('users.user_id'), nullable=False)
+
+    __table_args__ = (UniqueConstraint('broker_id', 'user_id', name='unique_broker_account'),)
