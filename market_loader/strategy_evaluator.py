@@ -24,7 +24,7 @@ class StrategyEvaluator:
         base_url = f"https://api.telegram.org/bot{settings.token}/sendMessage"
 
         payload = {
-            "chat_id": settings.chat_id,
+            "chat_id": settings.debug_chat_id,
             "text": text,
             "parse_mode": "HTML",
             "disable_web_page_preview": True
