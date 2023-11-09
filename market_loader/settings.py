@@ -3,6 +3,7 @@ from pydantic.v1 import BaseSettings
 
 class Settings(BaseSettings):
     token: str
+    bot_token: str
     base_url: str = "https://invest-public-api.tinkoff.ru/rest/"
     share_by: str = "tinkoff.public.invest.api.contract.v1.InstrumentsService/ShareBy"
     get_candles: str = "tinkoff.public.invest.api.contract.v1.MarketDataService/GetCandles"

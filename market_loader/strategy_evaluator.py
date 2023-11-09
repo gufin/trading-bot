@@ -1,13 +1,11 @@
-import asyncio
 from datetime import datetime, timedelta, timezone
 
-import httpx
 from loguru import logger
 
-from market_loader.settings import settings
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.models import CandleInterval, Ema, ReboundParam
-from market_loader.utils import get_rebound_message, get_start_time, need_for_calculation
+from market_loader.settings import settings
+from market_loader.utils import get_rebound_message, get_start_time, need_for_calculation, send_telegram_message
 
 
 class StrategyEvaluator:
@@ -19,26 +17,6 @@ class StrategyEvaluator:
         self.last_hour_update = current_time
         self.last_day_update = current_time
         self.need_for_cross_update = True
-
-    async def send_telegram_message(self, text: str) -> None:
-        base_url = f"https://api.telegram.org/bot{settings.token}/sendMessage"
-
-        payload = {
-            "chat_id": settings.debug_chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True
-        }
-        async with httpx.AsyncClient() as client:
-            attempts = 0
-            while attempts < settings.attempts_to_send_tg_msg:
-                try:
-                    await client.post(base_url, data=payload)
-                    break
-                except Exception as e:
-                    attempts += 1
-                    logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
-                    await asyncio.sleep(settings.tg_send_timeout)
 
     async def check_strategy(self) -> None:
         logger.info("Начали проверку стратегии")
@@ -80,7 +58,7 @@ class StrategyEvaluator:
                         and params.cross_count_1 == 1 and params.hour_candle.open < curr_ema.ema):
                     message = get_rebound_message(ticker_name, curr_ema, older_ema, interval, older_interval,
                                                   latest_candle, prev_candle, params.cross_count_4, 'SHORT')
-                    await self.send_telegram_message(message)
+                    await send_telegram_message(message)
                     logger.info(f"Сигнал. {message}")
             if curr_ema and prev_ema and prev_candle.low > prev_ema.ema and (latest_candle.low <= curr_ema.ema):
                 params = await self._get_rebound_params(ticker_id, interval, curr_ema)
@@ -88,7 +66,7 @@ class StrategyEvaluator:
                         and params.cross_count_1 == 1 and params.hour_candle.open > curr_ema.ema):
                     message = get_rebound_message(ticker_name, curr_ema, older_ema, interval, older_interval,
                                                   latest_candle, prev_candle, params.cross_count_4, 'LONG')
-                    await self.send_telegram_message(message)
+                    await send_telegram_message(message)
                     logger.info(f"Сигнал. {message}")
 
     async def _get_rebound_params(self, ticker_id: int, interval: CandleInterval, curr_ema: Ema) -> ReboundParam:

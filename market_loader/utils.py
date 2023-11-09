@@ -1,11 +1,14 @@
+import asyncio
 import uuid
 from datetime import datetime, timedelta
 
+import httpx
 import pytz
+from loguru import logger
 from tzlocal import get_localzone
 
-from market_loader.settings import settings
 from market_loader.models import Candle, CandleInterval, Ema, Price
+from market_loader.settings import settings
 
 
 def dict_to_float(num_dict: dict) -> float:
@@ -186,6 +189,27 @@ def price_to_units_and_nano(price: float) -> Price:
     units = int(price)
     nano = int((price - units) * 1_000_000_000)
     return Price(units=units, nano=nano)
+
+
+async def send_telegram_message(text: str) -> None:
+    base_url = f"https://api.telegram.org/bot{settings.bot_token}/sendMessage"
+
+    payload = {
+        "chat_id": settings.debug_chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    async with httpx.AsyncClient() as client:
+        attempts = 0
+        while attempts < settings.attempts_to_send_tg_msg:
+            try:
+                await client.post(base_url, data=payload)
+                break
+            except Exception as e:
+                attempts += 1
+                logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
+                await asyncio.sleep(settings.tg_send_timeout)
 
 
 class MaxRetriesExceededError(Exception):
