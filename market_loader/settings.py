@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     atr_period = 14
     mine_circle_sleep_time = 300
 
+    instrument_query_limit = 100
+    market_query_limit = 150
+
+    sandbox_query_limit = 100
+    post_order_limit = 150
+    get_order_limit = 100
+    cancel_order_limit = 50
+
     @property
     def storage_url(self):
         return (

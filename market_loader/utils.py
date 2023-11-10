@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import httpx
 import pytz
+from httpx import Response
 from loguru import logger
 from tzlocal import get_localzone
 
@@ -210,6 +211,20 @@ async def send_telegram_message(text: str) -> None:
                 attempts += 1
                 logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
                 await asyncio.sleep(settings.tg_send_timeout)
+
+
+async def make_http_request(url: str, headers: dict, json: dict) -> Response:
+    async with httpx.AsyncClient() as client:
+        attempts = 0
+        while attempts < settings.attempts_to_tcs_request:
+            try:
+                return await client.post(url, headers=headers, json=json)
+            except Exception as e:
+                attempts += 1
+                logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
+                await asyncio.sleep(settings.tcs_request_timeout)
+
+    raise MaxRetriesExceededError(f"Не удалось выполнить запрос после {settings.attempts_to_tcs_request} попыток.")
 
 
 class MaxRetriesExceededError(Exception):

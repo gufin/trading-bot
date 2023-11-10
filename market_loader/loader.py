@@ -3,16 +3,14 @@ from datetime import datetime, timedelta
 from datetime import timezone
 from http import HTTPStatus
 
-import httpx
 from httpx import Response
 from loguru import logger
 
-from market_loader.settings import settings
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.models import CandleInterval, FindInstrumentRequest, InstrumentRequest, Ticker
+from market_loader.settings import settings
 from market_loader.utils import (convert_to_base_date, dict_to_float, get_correct_time_format, get_interval,
-                                 MaxRetriesExceededError,
-                                 round_date, to_end_of_day, to_start_of_day)
+                                 make_http_request, round_date, to_end_of_day, to_start_of_day)
 
 
 class MarketDataLoader:
@@ -45,18 +43,7 @@ class MarketDataLoader:
             await asyncio.sleep(60)
             self.instrument_query_counter = 0
             self.market_query_counter = 0
-
-        async with httpx.AsyncClient() as client:
-            attempts = 0
-            while attempts < settings.attempts_to_tcs_request:
-                try:
-                    return await client.post(url, headers=headers, json=json)
-                except Exception as e:
-                    attempts += 1
-                    logger.error(f"Ошибка при выполнении запроса (Попытка {attempts}): {e}")
-                    await asyncio.sleep(settings.tcs_request_timeout)
-
-        raise MaxRetriesExceededError(f"Не удалось выполнить запрос после {settings.attempts_to_tcs_request} попыток.")
+        return await make_http_request(url, headers, json)
 
     async def _update_tickers(self) -> None:
         logger.info("Начали инициализацию тикеров")
