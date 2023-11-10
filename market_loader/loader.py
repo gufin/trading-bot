@@ -41,7 +41,7 @@ class MarketDataLoader:
         if (self.instrument_query_counter == settings.instrument_query_limit
                 or self.market_query_counter == settings.market_query_limit):
             logger.info("Достигли предела запросов в минуту")
-            await asyncio.sleep(60)
+            await asyncio.sleep(60 - time_difference)
             self.instrument_query_counter = 0
             self.market_query_counter = 0
         return await make_http_request(url, headers, json)
