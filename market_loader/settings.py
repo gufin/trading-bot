@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     get_order_limit = 100
     cancel_order_limit = 50
 
+    send_box_mode: bool
+
     @property
     def storage_url(self):
         return (
