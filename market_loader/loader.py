@@ -38,7 +38,8 @@ class MarketDataLoader:
         else:
             self.market_query_counter += 1
 
-        if self.instrument_query_counter == 99 or self.market_query_counter == 149:
+        if (self.instrument_query_counter == settings.instrument_query_limit
+                or self.market_query_counter == settings.market_query_limit):
             logger.info("Достигли предела запросов в минуту")
             await asyncio.sleep(60)
             self.instrument_query_counter = 0
