@@ -69,10 +69,20 @@ class Ema(BaseModel):
     atr: float = 0
 
 
-class ReboundParam(BaseModel):
+class ExtendedReboundParam(BaseModel):
     cross_count_4: int
     cross_count_1: int
+    cross_count_12: int
     hour_candle: Optional[Candle] = None
+
+
+class MainReboundParam(BaseModel):
+    curr_ema: Optional[Ema] = None
+    prev_ema: Optional[Ema] = None
+    older_ema: Optional[Ema] = None
+    prev_candle: Candle
+    latest_candle: Candle
+    ticker_name: str
 
 
 class OrderDirection(Enum):

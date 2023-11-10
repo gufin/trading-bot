@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from loguru import logger
 
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
-from market_loader.models import CandleInterval, Ema, ReboundParam
+from market_loader.models import CandleInterval, Ema, ExtendedReboundParam, MainReboundParam
 from market_loader.settings import settings
 from market_loader.utils import get_rebound_message, get_start_time, need_for_calculation, send_telegram_message
 
@@ -46,39 +46,71 @@ class StrategyEvaluator:
             await self._update_cross_data()
         candles = await self.db.get_last_two_candles_for_each_ticker(interval.value)
         for ticker_id in candles:
-            curr_ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval.value, span)
-            prev_ema = await self.db.get_penultimate_ema_for_ticker(ticker_id, interval.value, span)
-            older_ema = await self.db.get_latest_ema_for_ticker(ticker_id, older_interval.value, older_span)
-            prev_candle = candles[ticker_id][1]
-            latest_candle = candles[ticker_id][0]
-            ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
-            if curr_ema and prev_ema and latest_candle.high >= curr_ema.ema and prev_candle.high < prev_ema.ema:
-                params = await self._get_rebound_params(ticker_id, interval, curr_ema)
-                if (params.hour_candle and 1 <= params.cross_count_4 <= 2 and curr_ema.ema < older_ema.ema
-                        and params.cross_count_1 == 1 and params.hour_candle.open < curr_ema.ema):
-                    message = get_rebound_message(ticker_name, curr_ema, older_ema, interval, older_interval,
-                                                  latest_candle, prev_candle, params.cross_count_4, 'SHORT')
+            main_params = await self._get_rebound_main_params(ticker_id, interval, candles, span, older_interval,
+                                                              older_span)
+            if self._check_params(main_params, 'SHORT'):
+                params = await self._get_rebound_extended_params(ticker_id, interval, main_params.curr_ema)
+                if (params.hour_candle and 1 <= params.cross_count_4 <= 2
+                        and main_params.curr_ema.ema < main_params.older_ema.ema
+                        and params.cross_count_1 == 1
+                        and params.cross_count_12 < 6
+                        and params.hour_candle.open < main_params.curr_ema.ema):
+                    message = get_rebound_message(main_params, interval, older_interval, params.cross_count_4, 'SHORT')
                     await send_telegram_message(message)
                     logger.info(f"Сигнал. {message}")
-            if curr_ema and prev_ema and prev_candle.low > prev_ema.ema and (latest_candle.low <= curr_ema.ema):
-                params = await self._get_rebound_params(ticker_id, interval, curr_ema)
-                if (params.hour_candle and 1 <= params.cross_count_4 <= 2 and curr_ema.ema > older_ema.ema
-                        and params.cross_count_1 == 1 and params.hour_candle.open > curr_ema.ema):
-                    message = get_rebound_message(ticker_name, curr_ema, older_ema, interval, older_interval,
-                                                  latest_candle, prev_candle, params.cross_count_4, 'LONG')
+            if self._check_params(main_params, 'LONG'):
+                params = await self._get_rebound_extended_params(ticker_id, interval, main_params.curr_ema)
+                if (params.hour_candle and 1 <= params.cross_count_4 <= 2
+                        and main_params.curr_ema.ema > main_params.older_ema.ema
+                        and params.cross_count_1 == 1
+                        and params.cross_count_12 < 6
+                        and params.hour_candle.open > main_params.curr_ema.ema):
+                    message = get_rebound_message(main_params, interval, older_interval, params.cross_count_4, 'SHORT')
                     await send_telegram_message(message)
                     logger.info(f"Сигнал. {message}")
 
-    async def _get_rebound_params(self, ticker_id: int, interval: CandleInterval, curr_ema: Ema) -> ReboundParam:
+    @staticmethod
+    def _check_params(main_params: MainReboundParam, check_type: str) -> bool:
+        if check_type == 'SHORT':
+            return (main_params.curr_ema and main_params.prev_ema
+                    and main_params.latest_candle.high >= main_params.curr_ema.ema
+                    and main_params.prev_candle.high < main_params.prev_ema.ema)
+
+        if check_type == 'LONG':
+            return (main_params.curr_ema and main_params.prev_ema
+                    and main_params.prev_candle.low > main_params.prev_ema.ema
+                    and main_params.latest_candle.low <= main_params.curr_ema.ema)
+
+    async def _get_rebound_main_params(self, ticker_id: int, interval: CandleInterval, candles: dict, span: int,
+                                       older_interval: CandleInterval, older_span: int) -> MainReboundParam:
+        curr_ema = await self.db.get_latest_ema_for_ticker(ticker_id, interval.value, span)
+        prev_ema = await self.db.get_penultimate_ema_for_ticker(ticker_id, interval.value, span)
+        older_ema = await self.db.get_latest_ema_for_ticker(ticker_id, older_interval.value, older_span)
+        prev_candle = candles[ticker_id][1]
+        latest_candle = candles[ticker_id][0]
+        ticker_name = await self.db.get_ticker_name_by_id(ticker_id)
+        return MainReboundParam(curr_ema=curr_ema,
+                                prev_ema=prev_ema,
+                                older_ema=older_ema,
+                                prev_candle=prev_candle,
+                                latest_candle=latest_candle,
+                                ticker_name=ticker_name)
+
+    async def _get_rebound_extended_params(self, ticker_id: int, interval: CandleInterval,
+                                           curr_ema: Ema) -> ExtendedReboundParam:
         cross_count_4 = await self._save_and_get_cross_count(ticker_id, interval, curr_ema)
         end_time = datetime.now(timezone.utc)
         cross_count_1 = await self.db.get_ema_cross_count(ticker_id, interval.value, curr_ema.span,
-                                                          get_start_time(end_time, 1).replace(tzinfo=None),
+                                                          get_start_time(end_time, 1, 30).replace(tzinfo=None),
                                                           end_time.replace(tzinfo=None))
+        cross_count_12 = await self.db.get_ema_cross_count(ticker_id, interval.value, curr_ema.span,
+                                                           get_start_time(end_time, 12).replace(tzinfo=None),
+                                                           end_time.replace(tzinfo=None))
         hour_candle = await self.db.get_last_candle(ticker_id, CandleInterval.hour.value)
-        return ReboundParam(cross_count_4=cross_count_4,
-                            cross_count_1=cross_count_1,
-                            hour_candle=hour_candle)
+        return ExtendedReboundParam(cross_count_4=cross_count_4,
+                                    cross_count_1=cross_count_1,
+                                    cross_count_12=cross_count_12,
+                                    hour_candle=hour_candle)
 
     async def _update_cross_data(self):
         logger.info("Начали обновление данных о пересечении EMA")

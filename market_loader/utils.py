@@ -8,7 +8,7 @@ from httpx import Response
 from loguru import logger
 from tzlocal import get_localzone
 
-from market_loader.models import Candle, CandleInterval, Ema, Price
+from market_loader.models import Candle, CandleInterval, Ema, MainReboundParam, Price
 from market_loader.settings import settings
 
 
@@ -113,16 +113,33 @@ def make_tw_link(ticker: str, interval: str) -> str:
             f'&interval={get_interval_form_str_for_tw(interval)}')
 
 
-def get_start_time(end_time: datetime, cross_window: int) -> datetime:
-    if end_time.hour >= (settings.trade_start_hour + cross_window):
-        return end_time - timedelta(hours=cross_window)
+def get_start_time(end_time: datetime, cross_window_hours: int, cross_window_minutes: int = None) -> datetime:
+    cross_window_minutes = cross_window_minutes if cross_window_minutes is not None else 0
+    if (end_time.hour >= (settings.trade_start_hour + cross_window_hours) and
+            (cross_window_minutes == 0 or end_time.minute >= cross_window_minutes)):
+        total_cross_minutes = cross_window_hours * 60 + cross_window_minutes
+        return end_time - timedelta(minutes=total_cross_minutes)
     elif settings.trade_start_hour <= end_time.hour <= settings.trade_end_hour:
-        delta_hours = (settings.trade_start_hour + cross_window) - end_time.hour
-        delta_days = 3 if end_time.weekday() == 0 else 1
-        return ((end_time - timedelta(days=delta_days)).replace(hour=settings.trade_end_hour, minute=50)
-                - timedelta(hours=delta_hours)).replace(tzinfo=None)
+        return extracted_from_get_start_time_15(
+            cross_window_hours, end_time, cross_window_minutes
+        )
     else:
         return end_time.replace(tzinfo=None)
+
+
+def extracted_from_get_start_time_15(cross_window_hours: int, end_time: datetime,
+                                     cross_window_minutes: int) -> datetime:
+    delta_hours = (settings.trade_start_hour + cross_window_hours) - end_time.hour
+    delta_minutes = cross_window_minutes - end_time.minute
+    if delta_minutes < 0:
+        delta_hours -= 1
+        delta_minutes += 60
+
+    delta_days = 3 if end_time.weekday() == 0 else 1
+    start_time = ((end_time - timedelta(days=delta_days))
+                  .replace(hour=settings.trade_end_hour, minute=50)
+                  - timedelta(hours=delta_hours, minutes=delta_minutes))
+    return start_time.replace(tzinfo=None)
 
 
 def to_start_of_day(date: datetime) -> datetime:
@@ -140,29 +157,28 @@ def calculate_percentage(part: float, whole: float) -> float:
         return 0
 
 
-def get_rebound_message(ticker_name: str, current_ema: Ema, older_ema: Ema, interval: CandleInterval,
-                        older_interval: CandleInterval, latest_candle: Candle, prev_candle: Candle, cross_count: int,
-                        type_msg: str) -> str:
+def get_rebound_message(params: MainReboundParam, interval: CandleInterval, older_interval: CandleInterval, cross_count: int, type_msg: str) -> str:
     if type_msg == 'SHORT':
         candle_part = 'High'
-        candle_val = latest_candle.high
-        prev_candle_val = prev_candle.high
+        candle_val = params.latest_candle.high
+        prev_candle_val = params.prev_candle.high
     else:
         candle_part = 'Low'
-        candle_val = latest_candle.low
-        prev_candle_val = prev_candle.low
+        candle_val = params.latest_candle.low
+        prev_candle_val = params.prev_candle.low
 
-    return (f'<b>{type_msg} #{ticker_name}</b> пересек EMA {int(current_ema.span)} ({current_ema.ema}) в интервале '
-            f'{get_interval_form_str(interval.value)}.\nВремя: {convert_utc_to_local(current_ema.timestamp_column)}.\n'
-            f'ATR: {calculate_percentage(current_ema.atr, current_ema.ema)}%.\nКоличество пересечений за последние '
-            f'{settings.ema_cross_window} часа: {cross_count}.\n'
+    return (f'<b>{type_msg} #{params.ticker_name}</b> пересек EMA {int(params.curr_ema.span)} '
+            f'({params.curr_ema.ema}) в интервале {get_interval_form_str(interval.value)}.\n'
+            f'Время: {convert_utc_to_local(params.curr_ema.timestamp_column)}.\n'
+            f'ATR: {calculate_percentage(params.curr_ema.atr, params.curr_ema.ema)}%.\n'
+            f'Количество пересечений за последние {settings.ema_cross_window} часа: {cross_count}.\n'
             f'{candle_part} свечи: {candle_val}. '
-            f'Время свечи: {convert_utc_to_local(latest_candle.timestamp_column)}.\n'
-            f'{candle_part} предыдущей свечи: {prev_candle_val}. Время свечи '
-            f'{convert_utc_to_local(prev_candle.timestamp_column)}.\n'
-            f'Старшая EMA {older_ema.span} в интервале {get_interval_form_str(older_interval.value)}: {older_ema.ema}.'
-            f' Время: {convert_utc_to_local(older_ema.timestamp_column)}.\n'
-            f'<a href="{make_tw_link(ticker_name, interval.value)}">График tradingview</a>')
+            f'Время свечи: {convert_utc_to_local(params.latest_candle.timestamp_column)}.\n'
+            f'{candle_part} предыдущей свечи: {prev_candle_val}. '
+            f'Время свечи {convert_utc_to_local(params.prev_candle.timestamp_column)}.\n'
+            f'Старшая EMA {params.older_ema.span} в интервале {get_interval_form_str(older_interval.value)}'
+            f': {params.older_ema.ema}.Время: {convert_utc_to_local(params.older_ema.timestamp_column)}.\n'
+            f'<a href="{make_tw_link(params.ticker_name, interval.value)}">График tradingview</a>')
 
 
 def transform_candle_result(result) -> dict:
