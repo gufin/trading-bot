@@ -3,11 +3,14 @@ from pydantic.v1 import BaseSettings
 
 class Settings(BaseSettings):
     token: str
-    bot_token: str
+
     base_url: str = "https://invest-public-api.tinkoff.ru/rest/"
     share_by: str = "tinkoff.public.invest.api.contract.v1.InstrumentsService/ShareBy"
     get_candles: str = "tinkoff.public.invest.api.contract.v1.MarketDataService/GetCandles"
     find_instrument: str = "tinkoff.public.invest.api.contract.v1.InstrumentsService/FindInstrument"
+
+    positions: str = "tinkoff.public.invest.api.contract.v1.SandboxService/GetSandboxPositions"
+    portfolio: str = "tinkoff.public.invest.api.contract.v1.SandboxService/GetSandboxPortfolio"
 
     bot_token: str
     debug_chat_id: int
@@ -36,8 +39,12 @@ class Settings(BaseSettings):
     post_order_limit = 150
     get_order_limit = 100
     cancel_order_limit = 50
+    operations_limit = 100
 
     send_box_mode: bool
+    debug_mode: bool
+
+    position_buy_percent: int = 5
 
     @property
     def storage_url(self):

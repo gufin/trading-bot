@@ -19,6 +19,8 @@ class StrategyEvaluator:
         self.need_for_cross_update = True
 
     async def check_strategy(self) -> None:
+        if datetime.now(timezone.utc).weekday() >= 5:
+            return
         logger.info("Начали проверку стратегии")
         current_time = datetime.now(timezone.utc)
         intervals = [CandleInterval.min_5.value]
@@ -53,7 +55,6 @@ class StrategyEvaluator:
                 if (params.hour_candle and 1 <= params.cross_count_4 <= 2
                         and main_params.curr_ema.ema < main_params.older_ema.ema
                         and params.cross_count_1 == 1
-                        and params.cross_count_12 < 6
                         and params.hour_candle.open < main_params.curr_ema.ema):
                     message = get_rebound_message(main_params, interval, older_interval, params.cross_count_4, 'SHORT')
                     await send_telegram_message(message)
@@ -63,9 +64,8 @@ class StrategyEvaluator:
                 if (params.hour_candle and 1 <= params.cross_count_4 <= 2
                         and main_params.curr_ema.ema > main_params.older_ema.ema
                         and params.cross_count_1 == 1
-                        and params.cross_count_12 < 6
                         and params.hour_candle.open > main_params.curr_ema.ema):
-                    message = get_rebound_message(main_params, interval, older_interval, params.cross_count_4, 'SHORT')
+                    message = get_rebound_message(main_params, interval, older_interval, params.cross_count_4, 'LONG')
                     await send_telegram_message(message)
                     logger.info(f"Сигнал. {message}")
 

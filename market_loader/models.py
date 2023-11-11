@@ -98,7 +98,7 @@ class OrderType(Enum):
 
 class Price(BaseModel):
     units: int
-    nano: int  # ge=0 ensures the value is greater than or equal to 0
+    nano: int
 
 
 class Order(BaseModel):
@@ -110,3 +110,11 @@ class Order(BaseModel):
     orderType: OrderType
     orderId: UUID4
     instrumentId: str
+
+
+class AccountRequest(BaseModel):
+    accountId: str
+
+
+class PortfolioRequest(AccountRequest):
+    currency: str = 'RUB'

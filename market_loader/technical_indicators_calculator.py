@@ -56,6 +56,8 @@ class TechnicalIndicatorsCalculator:
         logger.info("Заверишили инициализацию EMA")
 
     async def calculate(self) -> None:
+        if datetime.now(timezone.utc).weekday() >= 5:
+            return
         await self._init_ema()
         logger.info("Начали расчет EMA")
         ema_to_calc = await self.db.get_ema_params_to_calc()

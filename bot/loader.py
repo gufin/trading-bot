@@ -5,6 +5,10 @@ from dotenv import load_dotenv
 
 import asyncio
 import os
+
+from market_loader.infrasturcture.entities import get_sessionmaker
+from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
+
 #import uvloop  # running only linux
 
 
@@ -15,11 +19,5 @@ bot = Bot(token=token, parse_mode="html")
 loop = asyncio.get_event_loop()
 storage = RedisStorage2(os.getenv("REDIS_HOST"), os.getenv("REDIS_PORT"), db=5)
 dp = Dispatcher(bot, loop=loop, storage=storage)
-db = Database(
-    name=os.getenv("PG_NAME"),
-    user=os.getenv("PG_USER"),
-    password=os.getenv("PG_PASSWORD"),
-    host=os.getenv("PG_HOST"),
-    port=os.getenv("PG_PORT"),
-    loop=loop,
-)
+sessionmaker = get_sessionmaker()
+db = BotPostgresRepository(sessionmaker)

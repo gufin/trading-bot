@@ -7,14 +7,12 @@ from loguru import logger
 
 async def startup(dp: Dispatcher) -> None:
     """initialization"""
-    await db.create_tables()
     await set_default_commands(dp)
     logger.info("bot started")
 
 
 async def shutdown(dp: Dispatcher) -> None:
     """and need to close Redis and PostgreSQL connection when shutdown"""
-    await db.close_database()
     await dp.storage.close()
     await dp.storage.wait_closed()
     logger.info("bot finished")
@@ -22,7 +20,7 @@ async def shutdown(dp: Dispatcher) -> None:
 
 if __name__ == "__main__":
     logger.add(
-        "logs/debug.log",
+        "logs/bot/debug.log",
         level="DEBUG",
         format="{time} | {level} | {module}:{function}:{line} | {message}",
         rotation="30 KB",

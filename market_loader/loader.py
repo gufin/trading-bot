@@ -151,7 +151,7 @@ class MarketDataLoader:
 
     async def _load_and_save_ticker_interval(self, ticker: Ticker, interval: CandleInterval, start_time: datetime,
                                              end_time: datetime) -> None:
-        if start_time.weekday() < 5:
+        if self.last_request_time.weekday() < 5 and start_time.weekday() < 5 and end_time.weekday() < 5:
             logger.info(
                 f"Загрузка | интервал: {get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}")
             response_data = await self._get_ticker_candles(ticker.figi, start_time, end_time, interval)

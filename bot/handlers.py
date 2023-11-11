@@ -1,6 +1,7 @@
 from aiogram import types
 from bot.loader import bot, db, dp
 from bot.texts import button_texts, message_texts
+from market_loader.market_processor import MarketProcessor
 
 
 @dp.message_handler(commands="start")
@@ -38,6 +39,19 @@ async def give_contacts(message: types.Message) -> None:
         message.chat.id,
         message_texts["github"],
         reply_markup=keyboard_link,
+    )
+
+
+@dp.message_handler(commands="show_portfolio")
+async def show_portfolio(message: types.Message) -> None:
+    """ссылка на код проекта."""
+    account_id = await db.get_user_account(user_id=1)
+    mp = MarketProcessor(db=db, sandbox_mode=True)
+    portfolio = await mp.get_portfolio(account_id)
+
+    await bot.send_message(
+        message.chat.id,
+        format_portfolio_message(portfolio),
     )
 
 @dp.message_handler(commands="chose_strategy")
@@ -132,3 +146,30 @@ async def unknown_message(message: types.Message) -> None:
         await bot.send_message(message.chat.id, message_texts["format_error"])
     else:
         await message.answer(message_texts["command_error"])
+
+
+def format_portfolio_message(data):
+    message = "Обзор портфолио:\n"
+
+    # Сумма общего портфолио
+    total_portfolio = data["totalAmountPortfolio"]
+    message += f"Общая стоимость портфолио: {total_portfolio['units']}.{str(total_portfolio['nano'])[:2]} {total_portfolio['currency'].upper()}\n"
+
+    # Перебор и добавление информации о каждой позиции
+    for category, amount in data.items():
+        if category.startswith("totalAmount") and category != "totalAmountPortfolio":
+            units = int(amount['units'])
+            nano = int(amount['nano'])
+            if units > 0 or nano > 0:
+                message += f"{category[11:]}: {units}.{str(nano)[:2]} {amount['currency'].upper()}\n"
+
+    # Добавление информации о позициях, если они есть
+    if "positions" in data and data["positions"]:
+        message += "Подробности по позициям:\n"
+        for position in data["positions"]:
+            units = int(position['quantity']['units'])
+            nano = int(position['quantity']['nano'])
+            if units > 0 or nano > 0:
+                message += f"- {position['instrumentType'].capitalize()}, FIGI: {position['figi']}, Количество: {units}.{str(nano)[:2]}\n"
+
+    return message
