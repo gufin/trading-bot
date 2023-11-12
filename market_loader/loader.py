@@ -73,7 +73,8 @@ class MarketDataLoader:
                         ticker = await self.db.update_tickers(ticker_id=ticker.ticker_id,
                                                               new_figi=ticker_data['figi'],
                                                               new_class_code=ticker_data['classCode'],
-                                                              new_currency=share_data['currency'])
+                                                              new_currency=share_data['currency'],
+                                                              lot=share_data['lot'])
                         logger.info(
                             f"Начали получать исторические данные | тикер: {ticker.name}; id: {ticker.ticker_id}")
                         await self._init_ticker_data(ticker)

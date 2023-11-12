@@ -1,5 +1,8 @@
+import uuid
+
 from sqlalchemy import (BIGINT, Boolean, Column, ForeignKey, Integer, Numeric, String, Text, TIMESTAMP,
                         UniqueConstraint)
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -70,6 +73,7 @@ class TickerModel(Base):
     classcode = Column(String(64), nullable=True)
     currency = Column(String(64), nullable=True)
     name = Column(String(64), nullable=False)
+    lot = Column(Integer, nullable=False, default=0)
     disable = Column(Boolean, default=False)
 
     __table_args__ = (UniqueConstraint('name', name='unique_ticker_name'),)
@@ -154,3 +158,28 @@ class BrokerAccount(Base):
     user_id = Column(BIGINT, ForeignKey('users.user_id'), nullable=False)
 
     __table_args__ = (UniqueConstraint('broker_id', 'user_id', name='unique_broker_account'),)
+
+
+class Order(Base):
+    __tablename__ = 'orders'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    orderId = Column(UUID(as_uuid=True), nullable=False)
+    executionReportStatus = Column(String, nullable=False)
+    lotsRequested = Column(Integer, nullable=False)
+    lotsExecuted = Column(Integer, nullable=False)
+    initialOrderPrice = Column(Numeric(10, 3), nullable=False)
+    executedOrderPrice = Column(Numeric(10, 3), nullable=False)
+    totalOrderAmount = Column(Numeric(10, 3), nullable=False)
+    initialCommission = Column(Numeric(10, 3), nullable=False)
+    executedCommission = Column(Numeric(10, 3), nullable=False)
+    figi = Column(String, nullable=False)
+    direction = Column(String, nullable=False)
+    initialSecurityPrice = Column(Numeric(10, 3), nullable=False)
+    orderType = Column(String, nullable=False)
+    message = Column(String)
+    instrumentUid = Column(UUID(as_uuid=True), nullable=False)
+    orderRequestId = Column(String)
+    accountId = Column(String(64), nullable=False)
+
+    __table_args__ = (UniqueConstraint('orderId', name='unique_orderIdt'),)

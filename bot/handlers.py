@@ -1,6 +1,8 @@
 from aiogram import types
+
 from bot.loader import bot, db, dp
 from bot.texts import button_texts, message_texts
+from bot.utils import format_active_orders_message, format_portfolio_message
 from market_loader.market_processor import MarketProcessor
 
 
@@ -42,17 +44,53 @@ async def give_contacts(message: types.Message) -> None:
     )
 
 
+@dp.message_handler(commands="buy_ticker")
+async def buy_ticker(message: types.Message) -> None:
+    mp = MarketProcessor(db=db, sandbox_mode=True)
+    # await mp.make_order("BBG004730RP0", 150.0, OrderDirection.buy, OrderType.limit)
+    await mp.replace_order("BBG004730RP0", 153.0)
+    await bot.send_message(
+        message.chat.id,
+        'Ваша воля исполнена',
+    )
+
+
+@dp.message_handler(commands="show_active_orders")
+async def show_active_orders(message: types.Message) -> None:
+    mp = MarketProcessor(db=db, sandbox_mode=True)
+    account_id = await db.get_user_account(user_id=1)
+    await mp.update_orders(account_id)
+    active_orders = await mp.get_orders()
+    text = await format_active_orders_message(active_orders)
+    await bot.send_message(
+        message.chat.id,
+        text,
+    )
+
+
+@dp.message_handler(commands="cancel_active_orders")
+async def cancel_active_orders(message: types.Message) -> None:
+    mp = MarketProcessor(db=db, sandbox_mode=True)
+    account_id = await db.get_user_account(user_id=1)
+    await mp.cancel_all_orders(account_id)
+    await bot.send_message(
+        message.chat.id,
+        'Ваша воля исполнена',
+    )
+
+
 @dp.message_handler(commands="show_portfolio")
 async def show_portfolio(message: types.Message) -> None:
     """ссылка на код проекта."""
     account_id = await db.get_user_account(user_id=1)
     mp = MarketProcessor(db=db, sandbox_mode=True)
     portfolio = await mp.get_portfolio(account_id)
-
+    text = await format_portfolio_message(portfolio)
     await bot.send_message(
         message.chat.id,
-        format_portfolio_message(portfolio),
+        text,
     )
+
 
 @dp.message_handler(commands="chose_strategy")
 async def chose_strategy(message: types.Message) -> None:
@@ -69,13 +107,15 @@ async def chose_strategy(message: types.Message) -> None:
         reply_markup=keyboard_link,
     )
 
+
 @dp.callback_query_handler(lambda c: c.data.startswith('strategy_'))
 async def process_strategy_button(callback_query: types.CallbackQuery):
     strategy_id = callback_query.data[len('strategy_'):]
     timeframes = await db.get_time_frames()
     keyboard_link = types.InlineKeyboardMarkup()
     for timeframe in timeframes:
-        btn_command = types.InlineKeyboardButton(text=timeframe[1], callback_data=f"timeframe_{timeframe[0]}_{strategy_id}")
+        btn_command = types.InlineKeyboardButton(text=timeframe[1],
+                                                 callback_data=f"timeframe_{timeframe[0]}_{strategy_id}")
         keyboard_link.add(btn_command)
 
     await bot.send_message(
@@ -93,7 +133,6 @@ async def process_strategy_button(callback_query: types.CallbackQuery):
         callback_query.message.chat.id,
         'Введите тикеры через запятую. Пример ввода - tickers: AAPL, AMZN, GAZP',
     )
-
 
 
 @dp.message_handler(commands="settings")
@@ -146,30 +185,3 @@ async def unknown_message(message: types.Message) -> None:
         await bot.send_message(message.chat.id, message_texts["format_error"])
     else:
         await message.answer(message_texts["command_error"])
-
-
-def format_portfolio_message(data):
-    message = "Обзор портфолио:\n"
-
-    # Сумма общего портфолио
-    total_portfolio = data["totalAmountPortfolio"]
-    message += f"Общая стоимость портфолио: {total_portfolio['units']}.{str(total_portfolio['nano'])[:2]} {total_portfolio['currency'].upper()}\n"
-
-    # Перебор и добавление информации о каждой позиции
-    for category, amount in data.items():
-        if category.startswith("totalAmount") and category != "totalAmountPortfolio":
-            units = int(amount['units'])
-            nano = int(amount['nano'])
-            if units > 0 or nano > 0:
-                message += f"{category[11:]}: {units}.{str(nano)[:2]} {amount['currency'].upper()}\n"
-
-    # Добавление информации о позициях, если они есть
-    if "positions" in data and data["positions"]:
-        message += "Подробности по позициям:\n"
-        for position in data["positions"]:
-            units = int(position['quantity']['units'])
-            nano = int(position['quantity']['nano'])
-            if units > 0 or nano > 0:
-                message += f"- {position['instrumentType'].capitalize()}, FIGI: {position['figi']}, Количество: {units}.{str(nano)[:2]}\n"
-
-    return message

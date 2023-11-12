@@ -1,19 +1,21 @@
+import uuid
 from datetime import datetime
 from datetime import timedelta, timezone
 from typing import Optional
 
 import pandas as pd
-from sqlalchemy import exists, func, select, text, update
+from sqlalchemy import exists, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from market_loader.infrasturcture.entities import (BrokerAccount, CandleModel, EMACrossModel, EMAModel, EMAToCalcModel,
-                                                   StrategyModel,
+                                                   Order, StrategyModel,
                                                    TickerModel,
                                                    TimeframeModel, UserModel,
                                                    UserStrategyModel, UserTickerModel)
-from market_loader.models import Candle, CandleInterval, Ema, EmaToCalc, Ticker, TickerToUpdateEma
-from market_loader.utils import transform_candle_result
+from market_loader.models import Candle, CandleInterval, Ema, EmaToCalc, OrderInfo, ReplaceOrderRequest, Ticker, \
+    TickerToUpdateEma
+from market_loader.utils import get_uuid, price_to_units_and_nano, transform_candle_result
 
 
 class BotPostgresRepository:
@@ -99,7 +101,7 @@ class BotPostgresRepository:
     async def get_tickers_without_figi(self) -> list[Ticker]:
         async with self.sessionmaker() as session:
             result = await session.execute(
-                select(TickerModel).where(TickerModel.figi.is_(None))
+                select(TickerModel).where(or_(TickerModel.figi.is_(None), TickerModel.lot.is_(None)))
             )
             return [Ticker(ticker_id=row.ticker_id, name=row.name) for row in result.scalars()]
 
@@ -114,15 +116,16 @@ class BotPostgresRepository:
                     figi=row.figi,
                     classCode=row.classcode,
                     currency=row.currency,
-                    name=row.name
+                    name=row.name,
+                    lot=row.lot
                 ) for row in result.scalars()]
 
     async def update_tickers(self, ticker_id: int, new_figi: str, new_class_code: str,
-                             new_currency: str) -> Optional[Ticker]:
+                             new_currency: str, lot: int) -> Optional[Ticker]:
         async with self.sessionmaker() as session:
             result = await session.execute(
                 update(TickerModel).where(TickerModel.ticker_id == ticker_id).
-                values(figi=new_figi, classcode=new_class_code, currency=new_currency).
+                values(figi=new_figi, classcode=new_class_code, currency=new_currency, lot=lot).
                 returning(TickerModel)
             )
             await session.commit()
@@ -132,7 +135,8 @@ class BotPostgresRepository:
                     figi=row.figi,
                     classCode=row.classcode,
                     currency=row.currency,
-                    name=row.name
+                    name=row.name,
+                    lot=row.lot
                 )
             else:
                 return None
@@ -289,6 +293,23 @@ class BotPostgresRepository:
                 where(TickerModel.ticker_id == ticker_id)
             )
             return result.scalar()
+
+    async def get_ticker_by_figi(self, figi: str) -> Optional[Ticker]:
+        async with self.sessionmaker() as session:
+            result = await session.execute(
+                select(TickerModel).
+                where(TickerModel.figi == figi)
+            )
+
+            if row := result.scalars().first():
+                return Ticker(ticker_id=row.ticker_id,
+                              figi=row.figi,
+                              classCode=row.classcode,
+                              currency=row.currency,
+                              name=row.name,
+                              lot=row.lot, )
+            else:
+                return None
 
     async def get_last_timestamp_by_interval_and_ticker(self, ticker_id: int, interval: CandleInterval) -> datetime:
         async with self.sessionmaker() as session:
@@ -481,3 +502,99 @@ class BotPostgresRepository:
             )
             broker_id = result.scalars().first()
             return broker_id
+
+    async def add_order(self, order_info: OrderInfo) -> None:
+        async with self.sessionmaker() as session:
+            order = Order(
+                orderId=uuid.UUID(order_info.orderId),
+                executionReportStatus=order_info.executionReportStatus,
+                lotsRequested=order_info.lotsRequested,
+                lotsExecuted=order_info.lotsExecuted,
+                initialOrderPrice=order_info.initialOrderPrice,
+                executedOrderPrice=order_info.executedOrderPrice,
+                totalOrderAmount=order_info.totalOrderAmount,
+                initialCommission=order_info.initialCommission,
+                executedCommission=order_info.executedCommission,
+                figi=order_info.figi,
+                direction=order_info.direction,
+                initialSecurityPrice=order_info.initialSecurityPrice,
+                orderType=order_info.orderType,
+                message=order_info.message,
+                instrumentUid=uuid.UUID(order_info.instrumentUid),
+                orderRequestId=order_info.orderRequestId,
+                accountId=order_info.accountId
+            )
+
+            try:
+                session.add(order)
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+
+    async def update_order(self, order_info: OrderInfo) -> None:
+        async with self.sessionmaker() as session:
+            stmt = select(Order).where(Order.orderId == uuid.UUID(order_info.orderId))
+            result = await session.execute(stmt)
+            existing_order = result.scalar()
+
+            if existing_order:
+                existing_order.executionReportStatus = order_info.executionReportStatus
+                existing_order.lotsRequested = order_info.lotsRequested
+                existing_order.lotsExecuted = order_info.lotsExecuted
+                existing_order.initialOrderPrice = order_info.initialOrderPrice
+                existing_order.executedOrderPrice = order_info.executedOrderPrice
+                existing_order.totalOrderAmount = order_info.totalOrderAmount
+                existing_order.initialCommission = order_info.initialCommission
+                existing_order.executedCommission = order_info.executedCommission
+                existing_order.figi = order_info.figi
+                existing_order.direction = order_info.direction
+                existing_order.initialSecurityPrice = order_info.initialSecurityPrice
+                existing_order.orderType = order_info.orderType
+                existing_order.message = order_info.message
+                existing_order.instrumentUid = uuid.UUID(order_info.instrumentUid)
+                existing_order.orderRequestId = order_info.orderRequestId
+
+                try:
+                    await session.commit()
+                except Exception as e:
+                    await session.rollback()
+
+    async def get_active_orders(self, account_id: str) -> list[str]:
+        async with self.sessionmaker() as session:
+            stmt = select(Order.orderId).where(
+                or_(
+                    Order.executionReportStatus == 'EXECUTION_REPORT_STATUS_NEW',
+                    Order.executionReportStatus == 'EXECUTION_REPORT_STATUS_PARTIALLYFILL'
+                ),
+                Order.accountId == account_id
+            )
+
+            # Выполнение запроса
+            result = await session.execute(stmt)
+            return [str(row[0]) for row in result.fetchall()]
+
+    async def get_active_order_by_figi(self, account_id: str, figi: str) -> Optional[ReplaceOrderRequest]:
+        async with self.sessionmaker() as session:
+            stmt = select(Order).where(Order.figi == figi, Order.accountId == account_id,
+                                       Order.executionReportStatus == 'EXECUTION_REPORT_STATUS_NEW')
+            result = await session.execute(stmt)
+            if order := result.scalars().first():
+                return ReplaceOrderRequest(accountId=account_id,
+                                           orderId=str(order.orderId),
+                                           idempotencyKey=get_uuid(),
+                                           quantity=order.lotsRequested,
+                                           price=price_to_units_and_nano(order.initialOrderPrice))
+            return None
+
+    async def cancel_order(self, order_id: str) -> None:
+        async with self.sessionmaker() as session:
+            stmt = select(Order).where(Order.orderId == uuid.UUID(order_id))
+            result = await session.execute(stmt)
+            existing_order = result.scalar()
+
+            if existing_order:
+                existing_order.executionReportStatus = 'EXECUTION_REPORT_STATUS_CANCELLED'
+                try:
+                    await session.commit()
+                except Exception as e:
+                    await session.rollback()

@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, UUID4
+from pydantic import BaseModel
 
 
 class FindInstrumentRequest(BaseModel):
@@ -17,6 +17,7 @@ class Ticker(BaseModel):
     classCode: str = None
     currency: str = None
     name: str
+    lot: int = 1
 
 
 class TickerToUpdateEma(BaseModel):
@@ -92,7 +93,7 @@ class OrderDirection(Enum):
 
 class OrderType(Enum):
     limit = 'ORDER_TYPE_LIMIT'
-    marker = 'ORDER_TYPE_MARKET'
+    market = 'ORDER_TYPE_MARKET'
     best_price = 'ORDER_TYPE_BESTPRICE'
 
 
@@ -105,10 +106,10 @@ class Order(BaseModel):
     figi: str
     quantity: int
     price: Price
-    direction: OrderDirection
-    accountId: UUID4
-    orderType: OrderType
-    orderId: UUID4
+    direction: str
+    accountId: str
+    orderType: str
+    orderId: str
     instrumentId: str
 
 
@@ -118,3 +119,36 @@ class AccountRequest(BaseModel):
 
 class PortfolioRequest(AccountRequest):
     currency: str = 'RUB'
+
+
+class OrderInfo(BaseModel):
+    orderId: str
+    executionReportStatus: str
+    lotsRequested: int
+    lotsExecuted: int
+    initialOrderPrice: float
+    executedOrderPrice: float
+    totalOrderAmount: float
+    initialCommission: float
+    executedCommission: float
+    figi: str
+    direction: str
+    initialSecurityPrice: float
+    orderType: str
+    message: Optional[str] = ""
+    instrumentUid: str
+    orderRequestId: Optional[str] = ""
+    accountId: str
+
+
+class OrderUpdateRequest(AccountRequest):
+    orderId: str
+
+
+class ReplaceOrderRequest(BaseModel):
+    accountId: str
+    orderId: str
+    idempotencyKey: str
+    quantity: int
+    price: Price
+    price_type: str = 'PRICE_TYPE_CURRENCY'

@@ -11,6 +11,11 @@ class Settings(BaseSettings):
 
     positions: str = "tinkoff.public.invest.api.contract.v1.SandboxService/GetSandboxPositions"
     portfolio: str = "tinkoff.public.invest.api.contract.v1.SandboxService/GetSandboxPortfolio"
+    post_order: str = "tinkoff.public.invest.api.contract.v1.SandboxService/PostSandboxOrder"
+    get_orders: str = "tinkoff.public.invest.api.contract.v1.SandboxService/GetSandboxOrders"
+    update_order: str = "tinkoff.public.invest.api.contract.v1.SandboxService/GetSandboxOrderState"
+    cancel_order: str = "tinkoff.public.invest.api.contract.v1.SandboxService/CancelSandboxOrder"
+    replace_order: str = "tinkoff.public.invest.api.contract.v1.SandboxService/ReplaceSandboxOrder"
 
     bot_token: str
     debug_chat_id: int
