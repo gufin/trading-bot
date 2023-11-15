@@ -4,7 +4,7 @@ from datetime import timedelta, timezone
 from typing import Optional
 
 import pandas as pd
-from sqlalchemy import exists, func, or_, select, text, update
+from sqlalchemy import and_, exists, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
@@ -101,7 +101,8 @@ class BotPostgresRepository:
     async def get_tickers_without_figi(self) -> list[Ticker]:
         async with self.sessionmaker() as session:
             result = await session.execute(
-                select(TickerModel).where(or_(TickerModel.figi.is_(None), TickerModel.lot.is_(None)))
+                select(TickerModel).where(or_(TickerModel.figi.is_(None), TickerModel.lot.is_(None),
+                                              TickerModel.min_price_increment.is_(None)))
             )
             return [Ticker(ticker_id=row.ticker_id, name=row.name) for row in result.scalars()]
 
@@ -117,15 +118,17 @@ class BotPostgresRepository:
                     classCode=row.classcode,
                     currency=row.currency,
                     name=row.name,
-                    lot=row.lot
+                    lot=row.lot,
+                    min_price_increment=row.min_price_increment
                 ) for row in result.scalars()]
 
     async def update_tickers(self, ticker_id: int, new_figi: str, new_class_code: str,
-                             new_currency: str, lot: int) -> Optional[Ticker]:
+                             new_currency: str, lot: int, min_price_increment: float) -> Optional[Ticker]:
         async with self.sessionmaker() as session:
             result = await session.execute(
                 update(TickerModel).where(TickerModel.ticker_id == ticker_id).
-                values(figi=new_figi, classcode=new_class_code, currency=new_currency, lot=lot).
+                values(figi=new_figi, classcode=new_class_code, currency=new_currency, lot=lot,
+                       min_price_increment=min_price_increment).
                 returning(TickerModel)
             )
             await session.commit()
@@ -136,7 +139,8 @@ class BotPostgresRepository:
                     classCode=row.classcode,
                     currency=row.currency,
                     name=row.name,
-                    lot=row.lot
+                    lot=row.lot,
+                    min_price_increment=row.min_price_increment
                 )
             else:
                 return None
@@ -286,13 +290,23 @@ class BotPostgresRepository:
             )
             return [row.user_id for row in result.scalars()]
 
-    async def get_ticker_name_by_id(self, ticker_id: int) -> Optional[str]:
+    async def get_ticker_by_id(self, ticker_id: int) -> Optional[Ticker]:
         async with self.sessionmaker() as session:
             result = await session.execute(
-                select(TickerModel.name).
+                select(TickerModel).
                 where(TickerModel.ticker_id == ticker_id)
             )
-            return result.scalar()
+
+            if row := result.scalars().first():
+                return Ticker(ticker_id=row.ticker_id,
+                              figi=row.figi,
+                              classCode=row.classcode,
+                              currency=row.currency,
+                              name=row.name,
+                              lot=row.lot,
+                              min_price_increment=row.min_price_increment)
+            else:
+                return None
 
     async def get_ticker_by_figi(self, figi: str) -> Optional[Ticker]:
         async with self.sessionmaker() as session:
@@ -307,7 +321,8 @@ class BotPostgresRepository:
                               classCode=row.classcode,
                               currency=row.currency,
                               name=row.name,
-                              lot=row.lot, )
+                              lot=row.lot,
+                             min_price_increment=row.min_price_increment)
             else:
                 return None
 
@@ -598,3 +613,28 @@ class BotPostgresRepository:
                     await session.commit()
                 except Exception as e:
                     await session.rollback()
+
+    async def get_cross_group_by_hour(self, ticker_id: int, interval: str, span: int, start_time: datetime,
+                                      end_time: datetime) -> int:
+        async with self.sessionmaker() as session:
+            result = await session.execute(
+                select(
+                    func.count(func.distinct(func.date_trunc('hour', EMACrossModel.timestamp_column)))
+                ).filter(
+                    and_(
+                        EMACrossModel.ticker_id == ticker_id,
+                        EMACrossModel.interval == interval,
+                        EMACrossModel.span == span,
+                        EMACrossModel.timestamp_column >= start_time,
+                        EMACrossModel.timestamp_column <= end_time
+                    )
+                )
+            )
+
+            return result.scalar()
+
+    async def get_active_figi(self) -> list[str]:
+        async with self.sessionmaker() as session:
+            stmt = select(TickerModel.figi).where(TickerModel.disable == False)
+            result = await session.execute(stmt)
+            return list(result)

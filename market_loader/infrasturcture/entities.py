@@ -74,6 +74,7 @@ class TickerModel(Base):
     currency = Column(String(64), nullable=True)
     name = Column(String(64), nullable=False)
     lot = Column(Integer, nullable=False, default=0)
+    min_price_increment = Column(Numeric(10, 3), nullable=True)
     disable = Column(Boolean, default=False)
 
     __table_args__ = (UniqueConstraint('name', name='unique_ticker_name'),)

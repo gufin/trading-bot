@@ -3,6 +3,7 @@ import math
 from datetime import datetime
 from datetime import timezone
 from http import HTTPStatus
+from http.client import responses
 from typing import Optional
 
 from httpx import Response
@@ -10,7 +11,7 @@ from loguru import logger
 
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.models import AccountRequest, Order, OrderDirection, OrderInfo, OrderType, OrderUpdateRequest, \
-    PortfolioRequest
+    PortfolioRequest, Ticker
 from market_loader.settings import settings
 from market_loader.utils import dict_to_float, get_uuid, make_http_request, price_to_units_and_nano
 
@@ -26,6 +27,7 @@ class MarketProcessor:
         self._get_order_query_counter = 0
         self._cancel_order_counter = 0
         self._operations_counter = 0
+        self._market_query_counter = 0
 
     async def _request_with_count(self, url: str, json: dict, query_type: str) -> Response:
 
@@ -45,6 +47,8 @@ class MarketProcessor:
             self._post_order_query_counter += 1
         elif query_type == 'operations':
             self._operations_counter += 1
+        elif query_type == 'market_query':
+            self._market_query_counter += 1
 
         if (self._sandbox_query_counter == settings.sandbox_query_limit
                 or self._cancel_order_counter == settings.cancel_order_limit
@@ -67,13 +71,14 @@ class MarketProcessor:
         self._get_order_query_counter = 0
         self._cancel_order_counter = 0
         self._operations_counter = 0
+        self._market_query_counter = 0
         self._last_request_time = current_time
 
-    async def make_order(self, figi: str, price: float, direction: OrderDirection, order_type: OrderType) -> None:
+    async def make_order(self, figi: str, price: float, direction: OrderDirection, order_type: OrderType) -> bool:
         account_id = await self._db.get_user_account(user_id=1)
         quantity = await self._get_order_quantity(figi, direction, price, account_id)
         if not quantity or not account_id:
-            return None
+            return False
         new_order_id = get_uuid()
         order = Order(figi=figi,
                       quantity=quantity,
@@ -91,9 +96,11 @@ class MarketProcessor:
             await self._db.add_order(order_model)
             logger.info((f"Добавлен новый ордер ордер. Аккаунт {account_id}; тикер {ticker.name}; "
                          f"Направление {direction.value}; Тип: {order_type.value}"))
+            return True
         else:
             logger.critical((f"Не удалось создать ордер. Аккаунт {account_id}; тикер {ticker.name}; "
                              f"Направление {direction.value}; Тип: {order_type.value}"))
+            return False
 
     async def _get_order_quantity(self, figi: str, direction: OrderDirection, price: float,
                                   account_id: str) -> Optional[int]:
@@ -170,7 +177,7 @@ class MarketProcessor:
         response = await self._request_with_count(url, orders_request.model_dump(), 'get_order')
         return response.json() if response.status_code == HTTPStatus.OK else None
 
-    async def update_order(self, account_id: str, order_id: str) -> None:
+    async def update_order(self, account_id: str, order_id: str) -> bool:
         order_update_request = OrderUpdateRequest(accountId=account_id, orderId=order_id)
         url = f"{settings.base_url}{settings.update_order}"
         response = await self._request_with_count(url, order_update_request.model_dump(), 'get_order')
@@ -178,28 +185,35 @@ class MarketProcessor:
             order_model = self._convert_data_to_order(response.json(), account_id)
             await self._db.update_order(order_model)
             logger.info(f"Обновлен ордер {order_id}. Аккаунт {account_id}.")
+            return True
+        else:
+            logger.info(f"Не удалось обновить ордер {order_id}. Аккаунт {account_id}.")
+            return False
 
     async def update_orders(self, account_id: str) -> None:
         orders = await self._db.get_active_orders(account_id)
         for order_id in orders:
             await self.update_order(account_id, order_id)
 
-    async def cancel_order(self, account_id: str, order_id: str) -> None:
+    async def cancel_order(self, account_id: str, order_id: str) -> bool:
         order_cancel_request = OrderUpdateRequest(accountId=account_id, orderId=order_id)
         url = f"{settings.base_url}{settings.cancel_order}"
         response = await self._request_with_count(url, order_cancel_request.model_dump(), 'cancel_order')
         if response.status_code == HTTPStatus.OK:
             logger.info(f"Отменен ордер {order_id}. Аккаунт {account_id}.")
+            return True
         else:
             logger.info(f"Не удалось отменить ордер {order_id}. Аккаунт {account_id}.")
+            return False
 
     async def cancel_all_orders(self, account_id: str) -> None:
         orders = await self._db.get_active_orders(account_id)
         for order_id in orders:
-            await self.cancel_order(account_id, order_id)
-            await self._db.cancel_order(order_id)
+            result = await self.cancel_order(account_id, order_id)
+            if result:
+                await self._db.cancel_order(order_id)
 
-    async def replace_order(self, figi: str, price: float):
+    async def replace_order(self, figi: str, price: float) -> bool:
         account_id = await self._db.get_user_account(user_id=1)
         active_order = await self._db.get_active_order_by_figi(account_id, figi)
         if active_order:
@@ -211,15 +225,63 @@ class MarketProcessor:
                 await self._db.add_order(order_model)
                 await self._db.cancel_order(active_order.orderId)
                 logger.info(f"Обновлен (replace) ордер {order_model.orderId}. Аккаунт {account_id}.")
+                return True
+            else:
+                logger.info(f"Не удалось обновить ордер {active_order.orderId}. Аккаунт {account_id}.")
+                return False
 
-    async def buy_limit(self, figi: str, price: float) -> None:
-        await self.make_order(figi, price, OrderDirection.buy, OrderType.limit)
+    async def buy_limit_with_replace(self, figi: str, price: float) -> bool:
+        account_id = await self._db.get_user_account(user_id=1)
+        active_order = await self._db.get_active_order_by_figi(account_id, figi)
+        if active_order:
+            return await self.replace_order(figi, price)
+        else:
+            return await self.make_order(figi, price, OrderDirection.buy, OrderType.limit)
 
     async def buy_market(self, figi: str, price: float) -> None:
         await self.make_order(figi, price, OrderDirection.buy, OrderType.market)
 
-    async def sell_limit(self, figi: str, price: float) -> None:
-        await self.make_order(figi, price, OrderDirection.sell, OrderType.limit)
+    async def sell_limit_with_replace(self, figi: str, price: float) -> bool:
+        account_id = await self._db.get_user_account(user_id=1)
+        active_order = await self._db.get_active_order_by_figi(account_id, figi)
+        if active_order:
+            return await self.replace_order(figi, price)
+        else:
+            return await self.make_order(figi, price, OrderDirection.sell, OrderType.limit)
 
     async def sell_market(self, figi: str, price: float) -> None:
         await self.make_order(figi, price, OrderDirection.sell, OrderType.market)
+
+    async def get_current_prices(self) -> Optional[dict]:
+        active_figi = await self._db.get_active_figi()
+        data = {"figi": active_figi, "instrumentId": active_figi}
+        url = f"{settings.base_url}{settings.last_prices}"
+        response = await self._request_with_count(url, data, 'market_query')
+        if response.status_code == HTTPStatus.OK:
+            price_data = response.json()
+            return {
+                price_row["figi"]: dict_to_float(price_row["price"])
+                for price_row in price_data['lastPrices']
+            }
+        return None
+
+    async def in_position(self, account_id: str, figi: str) -> bool:
+        positions = await self.get_positions(account_id)
+        if positions:
+            if "positions" in positions and positions["positions"]:
+                return any(
+                    position["instrumentType"] == "share"
+                    and position["figi"] == figi
+                    for position in positions["positions"]
+                )
+            return True
+        return True
+
+    @staticmethod
+    def round_price(price: float, ticker: Ticker) -> float:
+        return (price // ticker.min_price_increment) * ticker.min_price_increment
+
+
+
+
+

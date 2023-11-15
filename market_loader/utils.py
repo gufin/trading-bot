@@ -167,7 +167,7 @@ def get_rebound_message(params: MainReboundParam, interval: CandleInterval, olde
         candle_val = params.latest_candle.low
         prev_candle_val = params.prev_candle.low
 
-    return (f'<b>{type_msg} #{params.ticker_name}</b> пересек EMA {int(params.curr_ema.span)} '
+    return (f'<b>{type_msg} #{params.ticker.name}</b> пересек EMA {int(params.curr_ema.span)} '
             f'({params.curr_ema.ema}) в интервале {get_interval_form_str(interval.value)}.\n'
             f'Время: {convert_utc_to_local(params.curr_ema.timestamp_column)}.\n'
             f'ATR: {calculate_percentage(params.curr_ema.atr, params.curr_ema.ema)}%.\n'
@@ -178,7 +178,7 @@ def get_rebound_message(params: MainReboundParam, interval: CandleInterval, olde
             f'Время свечи {convert_utc_to_local(params.prev_candle.timestamp_column)}.\n'
             f'Старшая EMA {params.older_ema.span} в интервале {get_interval_form_str(older_interval.value)}'
             f': {params.older_ema.ema}.Время: {convert_utc_to_local(params.older_ema.timestamp_column)}.\n'
-            f'<a href="{make_tw_link(params.ticker_name, interval.value)}">График tradingview</a>')
+            f'<a href="{make_tw_link(params.ticker.name, interval.value)}">График tradingview</a>')
 
 
 def transform_candle_result(result) -> dict:

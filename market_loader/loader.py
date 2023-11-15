@@ -70,11 +70,13 @@ class MarketDataLoader:
                                                                     query_type='instrument')
                     if share_response.status_code == HTTPStatus.OK:
                         share_data = share_response.json()['instrument']
+                        min_price_increment = dict_to_float(share_data['minPriceIncrement'])
                         ticker = await self.db.update_tickers(ticker_id=ticker.ticker_id,
                                                               new_figi=ticker_data['figi'],
                                                               new_class_code=ticker_data['classCode'],
                                                               new_currency=share_data['currency'],
-                                                              lot=share_data['lot'])
+                                                              lot=share_data['lot'],
+                                                              min_price_increment=min_price_increment)
                         logger.info(
                             f"Начали получать исторические данные | тикер: {ticker.name}; id: {ticker.ticker_id}")
                         await self._init_ticker_data(ticker)
@@ -141,9 +143,12 @@ class MarketDataLoader:
             logger.info(
                 f"Запись | интервал: {get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}")
         for candle in response_data['candles']:
+            candle_date = convert_to_base_date(candle['time']).replace(tzinfo=None)
+            if candle_date.weekday() > 4:
+                continue
             await self.db.add_candle(ticker.ticker_id,
                                      interval.value,
-                                     convert_to_base_date(candle['time']).replace(tzinfo=None),
+                                     candle_date,
                                      dict_to_float(candle['open']),
                                      dict_to_float(candle['high']),
                                      dict_to_float(candle['low']),
@@ -152,7 +157,7 @@ class MarketDataLoader:
 
     async def _load_and_save_ticker_interval(self, ticker: Ticker, interval: CandleInterval, start_time: datetime,
                                              end_time: datetime) -> None:
-        if self.last_request_time.weekday() < 5 and start_time.weekday() < 5 and end_time.weekday() < 5:
+        if start_time.weekday() < 5 and end_time.weekday() < 5:
             logger.info(
                 f"Загрузка | интервал: {get_interval(interval)}; тикер: {ticker.name}; id: {ticker.ticker_id}")
             response_data = await self._get_ticker_candles(ticker.figi, start_time, end_time, interval)

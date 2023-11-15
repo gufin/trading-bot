@@ -18,6 +18,7 @@ class Ticker(BaseModel):
     currency: str = None
     name: str
     lot: int = 1
+    min_price_increment: float = 1.0
 
 
 class TickerToUpdateEma(BaseModel):
@@ -83,7 +84,7 @@ class MainReboundParam(BaseModel):
     older_ema: Optional[Ema] = None
     prev_candle: Candle
     latest_candle: Candle
-    ticker_name: str
+    ticker: Ticker
 
 
 class OrderDirection(Enum):

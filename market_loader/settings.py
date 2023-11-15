@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     update_order: str = "tinkoff.public.invest.api.contract.v1.SandboxService/GetSandboxOrderState"
     cancel_order: str = "tinkoff.public.invest.api.contract.v1.SandboxService/CancelSandboxOrder"
     replace_order: str = "tinkoff.public.invest.api.contract.v1.SandboxService/ReplaceSandboxOrder"
+    last_prices: str = "tinkoff.public.invest.api.contract.v1.MarketDataService/GetLastPrices"
 
     bot_token: str
     debug_chat_id: int
