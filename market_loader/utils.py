@@ -8,7 +8,8 @@ from httpx import Response
 from loguru import logger
 from tzlocal import get_localzone
 
-from market_loader.models import Candle, CandleInterval, Ema, MainReboundParam, Price
+from market_loader.models import Candle, CandleInterval, MainReboundParam, OrderDirection, OrderType, Price, \
+    Ticker
 from market_loader.settings import settings
 
 
@@ -157,7 +158,8 @@ def calculate_percentage(part: float, whole: float) -> float:
         return 0
 
 
-def get_rebound_message(params: MainReboundParam, interval: CandleInterval, older_interval: CandleInterval, cross_count: int, type_msg: str) -> str:
+def get_rebound_message(params: MainReboundParam, interval: CandleInterval, older_interval: CandleInterval,
+                        cross_count: int, type_msg: str) -> str:
     if type_msg == 'SHORT':
         candle_part = 'High'
         candle_val = params.latest_candle.high
@@ -179,6 +181,26 @@ def get_rebound_message(params: MainReboundParam, interval: CandleInterval, olde
             f'Старшая EMA {params.older_ema.span} в интервале {get_interval_form_str(older_interval.value)}'
             f': {params.older_ema.ema}.Время: {convert_utc_to_local(params.older_ema.timestamp_column)}.\n'
             f'<a href="{make_tw_link(params.ticker.name, interval.value)}">График tradingview</a>')
+
+
+def get_market_message(ticker: Ticker, order_price, current_price: float, message_type: OrderType,
+                       direction: OrderDirection) -> str:
+    order_type = 'рыночную' if message_type == OrderType.market else 'лимитную'
+    order_direction = 'покупку' if direction == OrderDirection.buy else 'продажу'
+    if message_type == OrderType.limit and direction == OrderDirection.buy:
+        order_emoji = '🛒'
+    elif message_type == OrderType.limit and direction == OrderDirection.sell:
+        order_emoji = '🤑💵'
+    elif message_type == OrderType.market and direction == OrderDirection.sell:
+        order_emoji = '😶💵'
+    else:
+        order_emoji = ''
+
+    interval = CandleInterval.min_5
+    return (f'{order_emoji}Выставили {order_type} заявку на {order_direction} <b>#{ticker.name}</b>.\n'
+            f'Текущая цена позиции: {current_price}.\n'
+            f'Цена открытия: {order_price}.\n'
+            f'<a href="{make_tw_link(ticker.name, interval.value)}">График tradingview</a>')
 
 
 def transform_candle_result(result) -> dict:

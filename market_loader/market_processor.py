@@ -3,7 +3,6 @@ import math
 from datetime import datetime
 from datetime import timezone
 from http import HTTPStatus
-from http.client import responses
 from typing import Optional
 
 from httpx import Response
@@ -74,7 +73,8 @@ class MarketProcessor:
         self._market_query_counter = 0
         self._last_request_time = current_time
 
-    async def make_order(self, figi: str, price: float, direction: OrderDirection, order_type: OrderType) -> bool:
+    async def make_order(self, figi: str, price: float, direction: OrderDirection, order_type: OrderType,
+                         atr: float) -> bool:
         account_id = await self._db.get_user_account(user_id=1)
         quantity = await self._get_order_quantity(figi, direction, price, account_id)
         if not quantity or not account_id:
@@ -92,7 +92,7 @@ class MarketProcessor:
         response = await self._request_with_count(url, order.model_dump(), 'post_order')
         ticker = await self._db.get_ticker_by_figi(figi)
         if response.status_code == HTTPStatus.OK:
-            order_model = self._convert_data_to_order(response.json(), account_id)
+            order_model = self._convert_data_to_order(response.json(), account_id, atr)
             await self._db.add_order(order_model)
             logger.info((f"Добавлен новый ордер ордер. Аккаунт {account_id}; тикер {ticker.name}; "
                          f"Направление {direction.value}; Тип: {order_type.value}"))
@@ -154,7 +154,9 @@ class MarketProcessor:
         return response.json() if response.status_code == HTTPStatus.OK else None
 
     @staticmethod
-    def _convert_data_to_order(data: dict, account_id: str) -> OrderInfo:
+    def _convert_data_to_order(data: dict, account_id: str, atr: float = None) -> OrderInfo:
+        if atr is None:
+            atr = 1.0
         converted_data = {
             **data,
             'lotsRequested': int(data['lotsRequested']),
@@ -165,7 +167,8 @@ class MarketProcessor:
             'initialCommission': dict_to_float(data['initialCommission']),
             'executedCommission': dict_to_float(data['executedCommission']),
             'initialSecurityPrice': dict_to_float(data['initialSecurityPrice']),
-            'accountId': account_id
+            'accountId': account_id,
+            'atr': atr
         }
 
         return OrderInfo(**converted_data)
@@ -215,7 +218,7 @@ class MarketProcessor:
 
     async def replace_order(self, figi: str, price: float) -> bool:
         account_id = await self._db.get_user_account(user_id=1)
-        active_order = await self._db.get_active_order_by_figi(account_id, figi)
+        active_order = await self._db.get_active_order_by_figi(account_id, figi, OrderDirection.buy)
         if active_order:
             active_order.price = price_to_units_and_nano(price)
             url = f"{settings.base_url}{settings.replace_order}"
@@ -230,27 +233,28 @@ class MarketProcessor:
                 logger.info(f"Не удалось обновить ордер {active_order.orderId}. Аккаунт {account_id}.")
                 return False
 
-    async def buy_limit_with_replace(self, figi: str, price: float) -> bool:
+    async def buy_limit_with_replace(self, figi: str, price: float, atr: float) -> bool:
         account_id = await self._db.get_user_account(user_id=1)
-        active_order = await self._db.get_active_order_by_figi(account_id, figi)
+        active_order = await self._db.get_active_order_by_figi(account_id, figi, OrderDirection.buy)
         if active_order:
             return await self.replace_order(figi, price)
         else:
-            return await self.make_order(figi, price, OrderDirection.buy, OrderType.limit)
+            return await self.make_order(figi, price, OrderDirection.buy, OrderType.limit, atr)
 
-    async def buy_market(self, figi: str, price: float) -> None:
-        await self.make_order(figi, price, OrderDirection.buy, OrderType.market)
+    async def buy_market(self, figi: str, price: float, atr: float) -> None:
+        await self.make_order(figi, price, OrderDirection.buy, OrderType.market, atr)
 
-    async def sell_limit_with_replace(self, figi: str, price: float) -> bool:
+    async def sell_limit_with_replace(self, figi: str, price: float, atr: float) -> bool:
         account_id = await self._db.get_user_account(user_id=1)
-        active_order = await self._db.get_active_order_by_figi(account_id, figi)
+        active_order = await self._db.get_active_order_by_figi(account_id, figi, OrderDirection.sell)
         if active_order:
             return await self.replace_order(figi, price)
         else:
-            return await self.make_order(figi, price, OrderDirection.sell, OrderType.limit)
+            return await self.make_order(figi, price, OrderDirection.sell, OrderType.limit, atr)
 
-    async def sell_market(self, figi: str, price: float) -> None:
-        await self.make_order(figi, price, OrderDirection.sell, OrderType.market)
+    async def sell_market(self, figi: str, price: float) -> bool:
+        atr = 1
+        return await self.make_order(figi, price, OrderDirection.sell, OrderType.market, atr)
 
     async def get_current_prices(self) -> Optional[dict]:
         active_figi = await self._db.get_active_figi()
@@ -265,8 +269,8 @@ class MarketProcessor:
             }
         return None
 
-    async def in_position(self, account_id: str, figi: str) -> bool:
-        positions = await self.get_positions(account_id)
+    @staticmethod
+    async def in_position(figi: str, positions: dict) -> bool:
         if positions:
             if "positions" in positions and positions["positions"]:
                 return any(
@@ -281,7 +285,6 @@ class MarketProcessor:
     def round_price(price: float, ticker: Ticker) -> float:
         return (price // ticker.min_price_increment) * ticker.min_price_increment
 
-
-
-
-
+    async def save_current_positions(self, account_id: str, positions: list[Ticker]) -> None:
+        task_id = await self._db.create_new_position_check_task(1)
+        await self._db.add_positions(task_id, positions)

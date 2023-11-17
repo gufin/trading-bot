@@ -4,9 +4,10 @@ from loguru import logger
 
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.market_processor import MarketProcessor
-from market_loader.models import CandleInterval, Ema, ExtendedReboundParam, MainReboundParam
+from market_loader.models import CandleInterval, Ema, ExtendedReboundParam, MainReboundParam, OrderDirection, OrderType
 from market_loader.settings import settings
-from market_loader.utils import dict_to_float, get_rebound_message, get_start_time, need_for_calculation, \
+from market_loader.utils import dict_to_float, get_market_message, get_rebound_message, get_start_time, \
+    need_for_calculation, \
     send_telegram_message
 
 
@@ -147,21 +148,25 @@ class StrategyEvaluator:
 
     async def _make_orders(self, candles: dict, interval: CandleInterval, span: int, older_interval: CandleInterval,
                            older_span: int):
+        logger.info("Начали выставлять ордера на покупку")
         prices = await self.mp.get_current_prices()
         if prices is None:
             logger.critical("Не удалось получить текущие цены")
             return
         account_id = await self.db.get_user_account(user_id=1)
+        portfolio = await self.mp.get_portfolio(account_id)
         for ticker_id in candles:
             main_params = await self._get_rebound_main_params(ticker_id, interval, candles, span, older_interval,
                                                               older_span)
 
-            in_position = await self.mp.in_position(account_id , main_params.ticker.figi)
+            in_position = await self.mp.in_position(main_params.ticker.figi, portfolio)
             if self._check_params(main_params, 'LONG_ORDER') and not in_position:
                 params = await self._get_rebound_extended_params(ticker_id, interval, main_params.curr_ema)
-                active_order = await self.db.get_active_order_by_figi(account_id, main_params.ticker.figi)
+                active_order = await self.db.get_active_order_by_figi(account_id, main_params.ticker.figi,
+                                                                      OrderDirection.buy)
                 price = self.mp.round_price(main_params.curr_ema.ema, main_params.ticker)
-                order_price_different = dict_to_float(active_order.price.model_dump()) != price if active_order else True
+                order_price_different = dict_to_float(
+                    active_order.price.model_dump()) / active_order.quantity != price if active_order else True
                 if (params.hour_candle
                         and order_price_different
                         and main_params.ticker.figi in prices
@@ -171,9 +176,57 @@ class StrategyEvaluator:
                         and params.cross_count_1 == 0
                         and params.cross_count_12 < 4
                         and params.hour_candle.open > main_params.curr_ema.ema):
-                    result = await self.mp.buy_limit_with_replace(main_params.ticker.figi, price)
+                    result = await self.mp.buy_limit_with_replace(main_params.ticker.figi, price,
+                                                                  main_params.curr_ema.atr)
                     if result:
-                        message = f"Открыли лимитную заявку на покупку {main_params.ticker.name}"
+                        message = get_market_message(main_params.ticker, price, prices[main_params.ticker.figi],
+                                                     OrderType.limit, OrderDirection.buy)
                         await send_telegram_message(message)
+        logger.info("Закончили выставлять ордера на покупку")
 
-
+    async def check_orders(self):
+        logger.info("Начали проверку активных ордеров")
+        account_id = await self.db.get_user_account(user_id=1)
+        latest_positions = await self.db.get_latest_positions(1)
+        current_positions_raw = await self.mp.get_positions(account_id)
+        current_positions = []
+        for security in current_positions_raw['securities']:
+            if security['instrumentType'] == 'share':
+                ticker = await self.db.get_ticker_by_figi(security['figi'])
+                current_positions.append(ticker)
+        prices = await self.mp.get_current_prices()
+        if prices is None:
+            logger.critical("Не удалось получить текущие цены")
+            return
+        for position in current_positions:
+            latest_order = await self.db.get_latest_order_by_direction(account_id, position.figi,
+                                                                       OrderDirection.buy)
+            base_price = latest_order.initialOrderPrice / latest_order.lotsRequested
+            price = self.mp.round_price(base_price + 3 * latest_order.atr, position)
+            if position not in latest_positions:
+                message = f"<b>Открыта позиция</b> #{position.name}"
+                await send_telegram_message(message)
+                if prices[position.figi] <= base_price - latest_order.atr:
+                    result = await self.mp.sell_market(position.figi, price)
+                    if result:
+                        message = get_market_message(position, 'по рынку', prices[position.figi], OrderType.market,
+                                                     OrderDirection.sell)
+                        await send_telegram_message(message)
+                else:
+                    result = await self.mp.sell_limit_with_replace(position.figi, price, latest_order.atr)
+                    if result:
+                        message = get_market_message(position, price, prices[position.figi], OrderType.limit,
+                                                     OrderDirection.sell)
+                        await send_telegram_message(message)
+            elif prices[position.figi] <= base_price - latest_order.atr:
+                latest_order = await self.db.get_latest_order_by_direction(account_id, position.figi,
+                                                                           OrderDirection.sell)
+                if latest_order is not None:
+                    await self.mp.cancel_order(account_id, latest_order.orderId)
+                result = await self.mp.sell_market(position.figi, price)
+                if result:
+                    message = get_market_message(position, 'по рынку', prices[position.figi], OrderType.market,
+                                                 OrderDirection.sell)
+                    await send_telegram_message(message)
+        await self.mp.save_current_positions(account_id, current_positions)
+        logger.info("Закончили проверку активных ордеров")

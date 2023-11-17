@@ -54,6 +54,15 @@ async def buy_ticker(message: types.Message) -> None:
         'Ваша воля исполнена',
     )
 
+@dp.message_handler(commands="sell_all")
+async def sell_all(message: types.Message) -> None:
+    mp = MarketProcessor(db=db, sandbox_mode=True)
+    await mp.sell_market("BBG004730RP0", 2700.0)
+    await bot.send_message(
+        message.chat.id,
+        'Ваша воля исполнена',
+    )
+
 
 @dp.message_handler(commands="show_active_orders")
 async def show_active_orders(message: types.Message) -> None:
@@ -172,11 +181,11 @@ async def text_handler(message: types.Message) -> None:
             message.chat.id,
             'Тикеры добавлены, аби. Теперь жди топовых сигналов.',
         )
-    else:
-        await bot.send_message(
-            message.chat.id,
-            'Не понимаю тебя, аби.',
-        )
+    # else:
+    #     await bot.send_message(
+    #         message.chat.id,
+    #         'Не понимаю тебя, аби.',
+    #     )
 
 
 @dp.message_handler()

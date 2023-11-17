@@ -140,6 +140,7 @@ class OrderInfo(BaseModel):
     instrumentUid: str
     orderRequestId: Optional[str] = ""
     accountId: str
+    atr: float
 
 
 class OrderUpdateRequest(AccountRequest):

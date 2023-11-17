@@ -182,5 +182,27 @@ class Order(Base):
     instrumentUid = Column(UUID(as_uuid=True), nullable=False)
     orderRequestId = Column(String)
     accountId = Column(String(64), nullable=False)
+    timestamp = Column(TIMESTAMP, nullable=True)
+    atr = Column(Numeric(10, 3), nullable=True)
 
     __table_args__ = (UniqueConstraint('orderId', name='unique_orderIdt'),)
+
+
+class PositionCheckTask(Base):
+    __tablename__ = 'positions_checks'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    broker_account_id = Column(BIGINT, ForeignKey('broker_account.id'), nullable=False)
+    timestamp = Column(TIMESTAMP, nullable=False)
+
+    __table_args__ = (UniqueConstraint('broker_account_id', 'timestamp', name='unique_positions_checks'),)
+
+
+class Position(Base):
+    __tablename__ = 'positions'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticker_id = Column(BIGINT, ForeignKey('tickers.ticker_id'), nullable=False)
+    task = Column(UUID, ForeignKey('positions_checks.id'), nullable=False)
+
+    __table_args__ = (UniqueConstraint('ticker_id', 'task', name='unique_positions'),)

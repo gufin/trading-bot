@@ -4,16 +4,17 @@ from datetime import timedelta, timezone
 from typing import Optional
 
 import pandas as pd
-from sqlalchemy import and_, exists, func, or_, select, text, update
+from sqlalchemy import and_, desc, exists, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from market_loader.infrasturcture.entities import (BrokerAccount, CandleModel, EMACrossModel, EMAModel, EMAToCalcModel,
-                                                   Order, StrategyModel,
+                                                   Order, Position, PositionCheckTask, StrategyModel,
                                                    TickerModel,
                                                    TimeframeModel, UserModel,
                                                    UserStrategyModel, UserTickerModel)
-from market_loader.models import Candle, CandleInterval, Ema, EmaToCalc, OrderInfo, ReplaceOrderRequest, Ticker, \
+from market_loader.models import Candle, CandleInterval, Ema, EmaToCalc, OrderDirection, OrderInfo, \
+    ReplaceOrderRequest, Ticker, \
     TickerToUpdateEma
 from market_loader.utils import get_uuid, price_to_units_and_nano, transform_candle_result
 
@@ -322,7 +323,7 @@ class BotPostgresRepository:
                               currency=row.currency,
                               name=row.name,
                               lot=row.lot,
-                             min_price_increment=row.min_price_increment)
+                              min_price_increment=row.min_price_increment)
             else:
                 return None
 
@@ -537,7 +538,9 @@ class BotPostgresRepository:
                 message=order_info.message,
                 instrumentUid=uuid.UUID(order_info.instrumentUid),
                 orderRequestId=order_info.orderRequestId,
-                accountId=order_info.accountId
+                accountId=order_info.accountId,
+                timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
+                atr=order_info.atr
             )
 
             try:
@@ -550,9 +553,7 @@ class BotPostgresRepository:
         async with self.sessionmaker() as session:
             stmt = select(Order).where(Order.orderId == uuid.UUID(order_info.orderId))
             result = await session.execute(stmt)
-            existing_order = result.scalar()
-
-            if existing_order:
+            if existing_order := result.scalar():
                 existing_order.executionReportStatus = order_info.executionReportStatus
                 existing_order.lotsRequested = order_info.lotsRequested
                 existing_order.lotsExecuted = order_info.lotsExecuted
@@ -588,10 +589,12 @@ class BotPostgresRepository:
             result = await session.execute(stmt)
             return [str(row[0]) for row in result.fetchall()]
 
-    async def get_active_order_by_figi(self, account_id: str, figi: str) -> Optional[ReplaceOrderRequest]:
+    async def get_active_order_by_figi(self, account_id: str, figi: str, direction: OrderDirection) -> Optional[
+        ReplaceOrderRequest]:
         async with self.sessionmaker() as session:
             stmt = select(Order).where(Order.figi == figi, Order.accountId == account_id,
-                                       Order.executionReportStatus == 'EXECUTION_REPORT_STATUS_NEW')
+                                       Order.executionReportStatus == 'EXECUTION_REPORT_STATUS_NEW',
+                                       Order.direction == direction.value)
             result = await session.execute(stmt)
             if order := result.scalars().first():
                 return ReplaceOrderRequest(accountId=account_id,
@@ -601,13 +604,42 @@ class BotPostgresRepository:
                                            price=price_to_units_and_nano(order.initialOrderPrice))
             return None
 
+    async def get_latest_order_by_direction(self, account_id: str, figi: str, direction: OrderDirection) -> Optional[
+        OrderInfo]:
+        async with self.sessionmaker() as session:
+            result = await session.execute(
+                select(Order).filter(
+                    Order.figi == figi,
+                    Order.accountId == account_id,
+                    Order.direction == direction.value
+                ).order_by(desc(Order.timestamp)).limit(1)
+            )
+
+            order = result.scalars().first()
+            return OrderInfo(orderId=str(order.orderId),
+                             executionReportStatus=order.executionReportStatus,
+                             lotsRequested=order.lotsRequested,
+                             lotsExecuted=order.lotsExecuted,
+                             initialOrderPrice=order.initialOrderPrice,
+                             executedOrderPrice=order.executedOrderPrice,
+                             totalOrderAmount=order.totalOrderAmount,
+                             initialCommission=order.initialCommission,
+                             executedCommission=order.executedCommission,
+                             figi=order.figi,
+                             direction=order.direction,
+                             initialSecurityPrice=order.initialSecurityPrice,
+                             orderType=order.orderType,
+                             message=order.message,
+                             instrumentUid=str(order.instrumentUid),
+                             orderRequestId=order.orderRequestId,
+                             accountId=order.accountId,
+                             atr=order.atr) if order else None
+
     async def cancel_order(self, order_id: str) -> None:
         async with self.sessionmaker() as session:
             stmt = select(Order).where(Order.orderId == uuid.UUID(order_id))
             result = await session.execute(stmt)
-            existing_order = result.scalar()
-
-            if existing_order:
+            if existing_order := result.scalar():
                 existing_order.executionReportStatus = 'EXECUTION_REPORT_STATUS_CANCELLED'
                 try:
                     await session.commit()
@@ -637,4 +669,52 @@ class BotPostgresRepository:
         async with self.sessionmaker() as session:
             stmt = select(TickerModel.figi).where(TickerModel.disable == False)
             result = await session.execute(stmt)
-            return list(result)
+            return [row for row in result.scalars().all()]
+
+    async def get_latest_positions(self, account_id: str):
+        async with self.sessionmaker() as session:
+            result = await session.execute(
+                select(PositionCheckTask).where(PositionCheckTask.broker_account_id == account_id).order_by(
+                    desc(PositionCheckTask.timestamp)))
+            if latest_task := result.scalars().first():
+                result = await session.execute(select(Position).where(Position.task == latest_task.id))
+                positions = result.scalars().all()
+
+                # Получение данных тикеров
+                tickers = []
+                for position in positions:
+                    result = await session.execute(
+                        select(TickerModel).filter(TickerModel.ticker_id == position.ticker_id))
+                    if ticker_data := result.scalars().first():
+                        tickers.append(Ticker(
+                            ticker_id=ticker_data.ticker_id,
+                            figi=ticker_data.figi,
+                            classCode=ticker_data.classcode,
+                            currency=ticker_data.currency,
+                            name=ticker_data.name,
+                            lot=ticker_data.lot,
+                            min_price_increment=float(ticker_data.min_price_increment)
+                        ))
+
+                return tickers
+
+    async def create_new_position_check_task(self, account_id: str) -> uuid.UUID:
+        async with self.sessionmaker() as session:
+            record_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            new_task = PositionCheckTask(
+                broker_account_id=account_id,
+                timestamp=record_time
+            )
+            session.add(new_task)
+            await session.commit()
+            return new_task.id
+
+    async def add_positions(self, task: uuid.UUID, tickers: list[Ticker]) -> None:
+        async with self.sessionmaker() as session:
+            for ticker in tickers:
+                new_position = Position(
+                    ticker_id=ticker.ticker_id,
+                    task=task
+                )
+                session.add(new_position)
+            await session.commit()
