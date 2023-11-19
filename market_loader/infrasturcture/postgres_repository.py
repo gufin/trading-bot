@@ -8,7 +8,8 @@ from sqlalchemy import and_, desc, exists, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
-from market_loader.infrasturcture.entities import (BrokerAccount, CandleModel, EMACrossModel, EMAModel, EMAToCalcModel,
+from market_loader.infrasturcture.entities import (BrokerAccount, CandleModel, Deal, EMACrossModel, EMAModel,
+                                                   EMAToCalcModel,
                                                    Order, Position, PositionCheckTask, StrategyModel,
                                                    TickerModel,
                                                    TimeframeModel, UserModel,
@@ -718,3 +719,52 @@ class BotPostgresRepository:
                 )
                 session.add(new_position)
             await session.commit()
+
+    async def get_order_id(self, order_id: str) -> Optional[uuid.UUID]:
+        async with self.sessionmaker() as session:
+            try:
+                result = await session.execute(
+                    select(Order.id).where(Order.orderId == uuid.UUID(order_id))
+                )
+                order = result.scalar_one()
+                return order.id
+            except Exception as e:
+                return None
+
+    async def add_deal(self, ticker_id: int, buy_order: str):
+        async with self.sessionmaker() as session:
+            buy_order_id = await self.get_order_id(buy_order)
+            new_deal = Deal(
+                ticker_id=ticker_id,
+                buy_order=buy_order_id,
+            )
+            session.add(new_deal)
+            try:
+                await session.commit()
+                return True
+            except Exception as e:
+                await session.rollback()
+                return False
+
+    async def update_deal(self, ticker_id: int, buy_order: str, sell_order: str):
+        async with self.sessionmaker() as session:
+            buy_order_id = await self.get_order_id(buy_order)
+            stmt = select(Deal).where(
+                Deal.ticker_id == ticker_id,
+                Deal.buy_order == buy_order_id,
+                Deal.sell_order == None
+            )
+            result = await session.execute(stmt)
+            deal = result.scalar_one_or_none()
+
+            if deal:
+                sell_order_id = await self.get_order_id(sell_order)
+                await session.execute(
+                    update(Deal)
+                    .where(Deal.id == deal.id)
+                    .values(sell_order=sell_order_id)
+                )
+                await session.commit()
+                return True
+
+            return False

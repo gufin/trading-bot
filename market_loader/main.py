@@ -24,7 +24,7 @@ strategy_evaluator = StrategyEvaluator(db=db,mp=mp)
 async def main():
     logger.info("Загрузка началась")
     start_time_300 = datetime.now()
-    start_time_30 = datetime.now()
+    start_time_45 = datetime.now()
     first_load_exist = False
     start = True
     while True:
@@ -38,8 +38,8 @@ async def main():
             await strategy_evaluator.check_strategy()
 
         end_time = datetime.now()
-        if (end_time - start_time_30).total_seconds() >= 30 and first_load_exist:
-            start_time_30 = datetime.now()
+        if (end_time - start_time_45).total_seconds() >= 45 and first_load_exist:
+            start_time_45 = datetime.now()
             await strategy_evaluator.check_orders()
 
         await asyncio.sleep(10)

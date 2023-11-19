@@ -13,5 +13,6 @@ async def set_default_commands(dp: Dispatcher) -> None:
             types.BotCommand("show_active_orders", "show active orders"),
             types.BotCommand("cancel_active_orders", "cancel active orders"),
             types.BotCommand("sell_all", "sell all positions"),
+            types.BotCommand("get_deals", "trade journal"),
         ]
     )

@@ -206,3 +206,15 @@ class Position(Base):
     task = Column(UUID, ForeignKey('positions_checks.id'), nullable=False)
 
     __table_args__ = (UniqueConstraint('ticker_id', 'task', name='unique_positions'),)
+
+
+class Deal(Base):
+    __tablename__ = 'deals'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticker_id = Column(BIGINT, ForeignKey('tickers.ticker_id'), nullable=False)
+    buy_order = Column(UUID, ForeignKey('orders.id'), nullable=False)
+    sell_order = Column(UUID, ForeignKey('orders.id'), nullable=True)
+
+
+

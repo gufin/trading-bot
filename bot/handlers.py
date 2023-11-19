@@ -1,9 +1,57 @@
+import io
+
+import pandas as pd
 from aiogram import types
 
-from bot.loader import bot, db, dp
+from bot.loader import bot, db, dp, mp
 from bot.texts import button_texts, message_texts
 from bot.utils import format_active_orders_message, format_portfolio_message
-from market_loader.market_processor import MarketProcessor
+from market_loader.models import OrderDirection
+
+
+@dp.message_handler(commands="get_deals")
+async def get_deals(message: types.Message) -> None:
+    # deals = await db.get_deals()
+    deals = [
+        {
+            "deal_id": "1",
+            "ticker_id": "AAPL",
+            "buy_price": 150.00,
+            "sell_price": 155.00,
+            "quantity": 10,
+            "deal_date": "2023-01-01"
+        },
+        {
+            "deal_id": "2",
+            "ticker_id": "MSFT",
+            "buy_price": 250.00,
+            "sell_price": 260.00,
+            "quantity": 5,
+            "deal_date": "2023-01-02"
+        },
+        {
+            "deal_id": "3",
+            "ticker_id": "GOOGL",
+            "buy_price": 120.00,
+            "sell_price": 130.00,
+            "quantity": 8,
+            "deal_date": "2023-01-03"
+        },
+    ]
+    df = pd.DataFrame(deals)  # Предполагая, что deals - это список словарей
+
+    # Сохранение DataFrame в Excel-файл
+    with io.BytesIO() as output:
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False)
+        output.seek(0)
+
+        # Отправка файла в чат
+        await bot.send_document(
+            message.chat.id,
+            types.InputFile(output, filename="Deals.xlsx"),
+            caption='Ваша воля исполнена'
+        )
 
 
 @dp.message_handler(commands="start")
@@ -46,18 +94,28 @@ async def give_contacts(message: types.Message) -> None:
 
 @dp.message_handler(commands="buy_ticker")
 async def buy_ticker(message: types.Message) -> None:
-    mp = MarketProcessor(db=db, sandbox_mode=True)
+    figi = "BBG004730RP0"
+    ticker = db.get_ticker_by_figi(figi)
     # await mp.make_order("BBG004730RP0", 150.0, OrderDirection.buy, OrderType.limit)
-    await mp.replace_order("BBG004730RP0", 153.0)
+    await mp.buy_limit_with_replace(figi, 149.0, 1)
+    account_id = await db.get_user_account(user_id=1)
+    latest_order = await db.get_latest_order_by_direction(account_id, figi, OrderDirection.buy)
+    await db.add_deal(ticker.ticker_id, latest_order.orderId)
+    await mp.sell_market(figi, 170)
+    latest_sell_order = await db.get_latest_order_by_direction(account_id, ticker.figi,
+                                                               OrderDirection.sell)
+    latest_buy_order = await db.get_latest_order_by_direction(account_id, ticker.figi,
+                                                              OrderDirection.sell)
+    await db.update_deal(ticker.ticker_id, latest_buy_order.orderId, latest_sell_order.orderId)
     await bot.send_message(
         message.chat.id,
         'Ваша воля исполнена',
     )
 
+
 @dp.message_handler(commands="sell_all")
 async def sell_all(message: types.Message) -> None:
-    mp = MarketProcessor(db=db, sandbox_mode=True)
-    await mp.sell_market("BBG004730RP0", 2700.0)
+    await mp.sell_all_position_market()
     await bot.send_message(
         message.chat.id,
         'Ваша воля исполнена',
@@ -66,7 +124,6 @@ async def sell_all(message: types.Message) -> None:
 
 @dp.message_handler(commands="show_active_orders")
 async def show_active_orders(message: types.Message) -> None:
-    mp = MarketProcessor(db=db, sandbox_mode=True)
     account_id = await db.get_user_account(user_id=1)
     await mp.update_orders(account_id)
     active_orders = await mp.get_orders()
@@ -79,7 +136,6 @@ async def show_active_orders(message: types.Message) -> None:
 
 @dp.message_handler(commands="cancel_active_orders")
 async def cancel_active_orders(message: types.Message) -> None:
-    mp = MarketProcessor(db=db, sandbox_mode=True)
     account_id = await db.get_user_account(user_id=1)
     await mp.cancel_all_orders(account_id)
     await bot.send_message(
@@ -92,7 +148,6 @@ async def cancel_active_orders(message: types.Message) -> None:
 async def show_portfolio(message: types.Message) -> None:
     """ссылка на код проекта."""
     account_id = await db.get_user_account(user_id=1)
-    mp = MarketProcessor(db=db, sandbox_mode=True)
     portfolio = await mp.get_portfolio(account_id)
     text = await format_portfolio_message(portfolio)
     await bot.send_message(

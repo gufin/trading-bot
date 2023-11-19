@@ -288,3 +288,17 @@ class MarketProcessor:
     async def save_current_positions(self, account_id: str, positions: list[Ticker]) -> None:
         task_id = await self._db.create_new_position_check_task(1)
         await self._db.add_positions(task_id, positions)
+
+    async def sell_all_position_market(self):
+        account_id = await self._db.get_user_account(user_id=1)
+        position = await self.get_positions(account_id)
+        for security in position['securities']:
+            if security['instrumentType'] == 'share':
+                ticker = await self._db.get_ticker_by_figi(security['figi'])
+                await self.sell_market(ticker.figi, 100)
+                await self.close_deal(account_id, ticker)
+
+    async def close_deal(self, account_id: str, ticker: Ticker):
+        latest_sell_order = await self._db.get_latest_order_by_direction(account_id, ticker.figi, OrderDirection.sell)
+        latest_buy_order = await self._db.get_latest_order_by_direction(account_id, ticker.figi, OrderDirection.sell)
+        await self._db.update_deal(ticker.ticker_id, latest_buy_order.orderId, latest_sell_order.orderId)
