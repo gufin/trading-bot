@@ -1,3 +1,4 @@
+import asyncio
 import io
 
 import pandas as pd
@@ -11,34 +12,9 @@ from market_loader.models import OrderDirection
 
 @dp.message_handler(commands="get_deals")
 async def get_deals(message: types.Message) -> None:
-    # deals = await db.get_deals()
-    deals = [
-        {
-            "deal_id": "1",
-            "ticker_id": "AAPL",
-            "buy_price": 150.00,
-            "sell_price": 155.00,
-            "quantity": 10,
-            "deal_date": "2023-01-01"
-        },
-        {
-            "deal_id": "2",
-            "ticker_id": "MSFT",
-            "buy_price": 250.00,
-            "sell_price": 260.00,
-            "quantity": 5,
-            "deal_date": "2023-01-02"
-        },
-        {
-            "deal_id": "3",
-            "ticker_id": "GOOGL",
-            "buy_price": 120.00,
-            "sell_price": 130.00,
-            "quantity": 8,
-            "deal_date": "2023-01-03"
-        },
-    ]
-    df = pd.DataFrame(deals)  # Предполагая, что deals - это список словарей
+    account_id = await db.get_user_account(user_id=1)
+    await mp.update_orders(account_id)
+    df = await db.get_deal_journal()
 
     # Сохранение DataFrame в Excel-файл
     with io.BytesIO() as output:
@@ -95,18 +71,12 @@ async def give_contacts(message: types.Message) -> None:
 @dp.message_handler(commands="buy_ticker")
 async def buy_ticker(message: types.Message) -> None:
     figi = "BBG004730RP0"
-    ticker = db.get_ticker_by_figi(figi)
-    # await mp.make_order("BBG004730RP0", 150.0, OrderDirection.buy, OrderType.limit)
-    await mp.buy_limit_with_replace(figi, 149.0, 1)
-    account_id = await db.get_user_account(user_id=1)
-    latest_order = await db.get_latest_order_by_direction(account_id, figi, OrderDirection.buy)
-    await db.add_deal(ticker.ticker_id, latest_order.orderId)
-    await mp.sell_market(figi, 170)
-    latest_sell_order = await db.get_latest_order_by_direction(account_id, ticker.figi,
-                                                               OrderDirection.sell)
-    latest_buy_order = await db.get_latest_order_by_direction(account_id, ticker.figi,
-                                                              OrderDirection.sell)
-    await db.update_deal(ticker.ticker_id, latest_buy_order.orderId, latest_sell_order.orderId)
+    ticker = await db.get_ticker_by_figi(figi)
+    price = 145.0
+    for i in range(10):
+        await mp.buy_limit_with_replace(ticker.figi, price, 0.111)
+        price += i
+        await asyncio.sleep(10)
     await bot.send_message(
         message.chat.id,
         'Ваша воля исполнена',
@@ -131,6 +101,8 @@ async def show_active_orders(message: types.Message) -> None:
     await bot.send_message(
         message.chat.id,
         text,
+        parse_mode='HTML',
+        disable_web_page_preview=True,
     )
 
 

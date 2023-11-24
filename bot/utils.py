@@ -1,5 +1,6 @@
 from bot.loader import db
-from market_loader.utils import dict_to_float
+from market_loader.models import CandleInterval
+from market_loader.utils import dict_to_float, make_tw_link
 
 
 async def format_portfolio_message(data: dict) -> str:
@@ -37,6 +38,9 @@ async def format_portfolio_message(data: dict) -> str:
 async def format_active_orders_message(data: dict) -> str:
     message = ''
     header_added = False
+    interval = CandleInterval.min_5
+    order_count = 0
+    total_sum = 0
     if "orders" in data:
         if len(data["orders"]) == 0:
             return 'Нет активных заявок, милорд'
@@ -52,15 +56,22 @@ async def format_active_orders_message(data: dict) -> str:
                 price = dict_to_float({'units': initial_price['units'], 'nano': initial_price['nano']})
                 amount = int(order['lotsRequested'])*ticker.lot
                 order_sum = round(price*amount, 2)
-                order_type = 'лимитная' if order['orderType'] == 'ORDER_TYPE_LIMIT' else 'рыночная'
+                order_type = 'Л' if order['orderType'] == 'ORDER_TYPE_LIMIT' else 'Р'
+                tw_link = f'<a href="{make_tw_link(ticker.name, interval.value)}">tw</a>'
                 if order['direction'] == 'ORDER_DIRECTION_BUY':
-                    byu_orders += (f"- Покупка {ticker.name}, Количество {amount}, Цена: {price}, Тип: {order_type}, "
-                                   f"Сумма: {order_sum}\n")
+                    byu_orders += (f'- Buy {ticker.name}, Кол-во {amount}, Цена: {price}, Тип: {order_type}, '
+                                   f'Сумма: {order_sum} {tw_link}\n')
+                    order_count += 1
+                    total_sum += order_sum
                 else:
-                    sell_orders += (f"- Продажа {ticker.name}, Количество {amount} Цена: {price}, Тип: {order_type}, "
-                                    f"Сумма: {order_sum}\n")
+                    sell_orders += (f'- Sell {ticker.name}, Количество {amount} Цена: {price}, Тип: {order_type}, '
+                                    f'Сумма: {order_sum} {tw_link}\n')
+
         message += byu_orders + sell_orders
     elif not header_added:
-        message = 'Нет активных заявок, милорд'
+        message = 'Нет активных заявок, милорд \n'
+
+    message += "--------------------\n"
+    message += f"Всего заявок на покупку {order_count} на сумму {round(total_sum, 2)}"
 
     return message

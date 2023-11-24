@@ -166,10 +166,10 @@ class StrategyEvaluator:
                     price = self.mp.round_price(main_params.curr_ema.ema, main_params.ticker)
                     result = await self.mp.buy_limit_with_replace(main_params.ticker.figi, price,
                                                                   main_params.curr_ema.atr)
-                    if result:
-                        message = get_market_message(main_params.ticker, price, prices[main_params.ticker.figi],
-                                                     OrderType.limit, OrderDirection.buy)
-                        await send_telegram_message(message)
+                    # if result:
+                    #     message = get_market_message(main_params.ticker, price, prices[main_params.ticker.figi],
+                    #                                  OrderType.limit, OrderDirection.buy)
+                    #     await send_telegram_message(message)
         logger.info("Закончили выставлять ордера на покупку")
 
     async def _full_check_order(self, main_params: MainReboundParam, ticker_id: int, interval: CandleInterval,
@@ -201,6 +201,12 @@ class StrategyEvaluator:
                 ticker = await self.db.get_ticker_by_figi(security['figi'])
                 current_positions.append(ticker)
         prices = await self.mp.get_current_prices()
+        active_orders = await self.mp.get_orders()
+        active_figi = [
+            order['figi']
+            for order in active_orders["orders"]
+            if order['executionReportStatus'] == 'EXECUTION_REPORT_STATUS_NEW'
+        ]
         if prices is None:
             logger.critical("Не удалось получить текущие цены")
             return
@@ -209,11 +215,15 @@ class StrategyEvaluator:
                                                                        OrderDirection.buy)
             base_price = latest_order.initialOrderPrice / latest_order.lotsRequested
             price = self.mp.round_price(base_price + 3 * latest_order.atr, position)
-            if position not in db_positions:
+            if (
+                position not in db_positions
+                or position.figi not in active_figi
+            ):
                 await self.db.add_deal(position.ticker_id, latest_order.orderId)
-                message = f"<b>Открыта позиция</b> #{position.name}"
-                await send_telegram_message(message)
-                if prices[position.figi] <= base_price - latest_order.atr:
+                if position not in db_positions:
+                    message = f"<b>Открыта позиция</b> #{position.name}"
+                    await send_telegram_message(message)
+                if prices[position.figi] <= base_price - latest_order.atr*1.5:
                     result = await self.mp.sell_market(position.figi, price)
                     if result:
                         message = get_market_message(position, 'по рынку', prices[position.figi], OrderType.market,
@@ -225,7 +235,7 @@ class StrategyEvaluator:
                         message = get_market_message(position, price, prices[position.figi], OrderType.limit,
                                                      OrderDirection.sell)
                         await send_telegram_message(message)
-            elif prices[position.figi] <= base_price - latest_order.atr:
+            elif prices[position.figi] <= base_price - latest_order.atr*1.5:
                 latest_order = await self.db.get_latest_order_by_direction(account_id, position.figi,
                                                                            OrderDirection.sell)
                 if latest_order is not None:
@@ -235,11 +245,12 @@ class StrategyEvaluator:
                     message = get_market_message(position, 'по рынку', prices[position.figi], OrderType.market,
                                                  OrderDirection.sell)
                     await send_telegram_message(message)
-        for position in db_positions:
-            if position not in current_positions:
-                await self.mp.close_deal(account_id, position)
-                message = f"<b>Закрыта позиция</b> #{position.name}"
-                await send_telegram_message(message)
+        if db_positions:
+            for position in db_positions:
+                if position not in current_positions:
+                    await self.mp.close_deal(account_id, position)
+                    message = f"<b>Закрыта позиция</b> #{position.name}"
+                    await send_telegram_message(message)
 
 
         await self.mp.save_current_positions(account_id, current_positions)

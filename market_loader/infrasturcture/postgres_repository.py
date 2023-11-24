@@ -7,6 +7,7 @@ import pandas as pd
 from sqlalchemy import and_, desc, exists, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+from sqlalchemy.orm import aliased
 
 from market_loader.infrasturcture.entities import (BrokerAccount, CandleModel, Deal, EMACrossModel, EMAModel,
                                                    EMAToCalcModel,
@@ -593,9 +594,12 @@ class BotPostgresRepository:
     async def get_active_order_by_figi(self, account_id: str, figi: str, direction: OrderDirection) -> Optional[
         ReplaceOrderRequest]:
         async with self.sessionmaker() as session:
-            stmt = select(Order).where(Order.figi == figi, Order.accountId == account_id,
-                                       Order.executionReportStatus == 'EXECUTION_REPORT_STATUS_NEW',
-                                       Order.direction == direction.value)
+            stmt = (select(Order)
+                    .where(Order.figi == figi,
+                           Order.accountId == account_id,
+                           Order.executionReportStatus == 'EXECUTION_REPORT_STATUS_NEW',
+                           Order.direction == direction.value)
+                    .order_by(desc(Order.timestamp)))
             result = await session.execute(stmt)
             if order := result.scalars().first():
                 return ReplaceOrderRequest(accountId=account_id,
@@ -722,14 +726,10 @@ class BotPostgresRepository:
 
     async def get_order_id(self, order_id: str) -> Optional[uuid.UUID]:
         async with self.sessionmaker() as session:
-            try:
                 result = await session.execute(
                     select(Order.id).where(Order.orderId == uuid.UUID(order_id))
                 )
-                order = result.scalar_one()
-                return order.id
-            except Exception as e:
-                return None
+                return result.scalars().first()
 
     async def add_deal(self, ticker_id: int, buy_order: str):
         async with self.sessionmaker() as session:
@@ -768,3 +768,70 @@ class BotPostgresRepository:
                 return True
 
             return False
+
+    async def get_deal_journal(self):
+        async with self.sessionmaker() as session:
+            buy_order_alias = aliased(Order)
+            sell_order_alias = aliased(Order)
+
+            stmt = (select(
+                TickerModel.name,
+                TickerModel.lot,
+                TickerModel.min_price_increment,
+                buy_order_alias.lotsRequested.label("buy_lotsRequested"),
+                buy_order_alias.executedOrderPrice.label("buy_executedOrderPrice"),
+                buy_order_alias.executedCommission.label("buy_executedCommission"),
+                buy_order_alias.initialSecurityPrice.label("buy_initialSecurityPrice"),
+                buy_order_alias.timestamp.label("buy_timestamp"),
+                buy_order_alias.atr.label("buy_atr"),
+                sell_order_alias.lotsRequested.label("sell_lotsRequested"),
+                sell_order_alias.executedOrderPrice.label("sell_executedOrderPrice"),
+                sell_order_alias.executedCommission.label("sell_executedCommission"),
+                sell_order_alias.initialSecurityPrice.label("sell_initialSecurityPrice"),
+                sell_order_alias.timestamp.label("sell_timestamp"),
+                sell_order_alias.atr.label("sell_atr")
+            ).select_from(
+                Deal
+            ).join(
+                TickerModel, Deal.ticker_id == TickerModel.ticker_id
+            ).join(
+                buy_order_alias, Deal.buy_order == buy_order_alias.id
+            ).outerjoin(
+                sell_order_alias, Deal.sell_order == sell_order_alias.id
+            ).order_by(
+                desc(buy_order_alias.timestamp)
+            ))
+
+            result = await session.execute(stmt)
+            rows = result.all()
+
+            # Преобразование результатов в DataFrame
+            df = pd.DataFrame(rows, columns=[
+                "ticker_name",
+                "lot",
+                "min_price_increment",
+                "buy_lotsRequested",
+                "buy_executedOrderPrice",
+                "buy_executedCommission",
+                "buy_initialSecurityPrice",
+                "buy_timestamp",
+                "buy_atr",
+                "sell_lotsRequested",
+                "sell_executedOrderPrice",
+                "sell_executedCommission",
+                "sell_initialSecurityPrice",
+                "sell_timestamp",
+                "sell_atr"
+            ])
+
+            df['profit'] = df.apply(
+                lambda row: row['sell_executedOrderPrice'] - row['buy_executedOrderPrice']
+                if pd.notnull(row['sell_executedOrderPrice']) else 0,
+                axis=1
+            )
+            column_order = ["ticker_name", "profit", "buy_timestamp", "sell_timestamp"] + \
+                           [col for col in df.columns if
+                            col not in ["ticker_name", "profit", "buy_timestamp", "sell_timestamp"]]
+            df = df[column_order]
+
+            return df

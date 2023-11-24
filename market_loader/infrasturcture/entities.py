@@ -83,6 +83,7 @@ class TickerModel(Base):
     candles = relationship('CandleModel', back_populates='ticker')
     ema = relationship('EMAModel', back_populates='ticker')
     ema_cross = relationship('EMACrossModel', back_populates='ticker')
+    deals = relationship("Deal", back_populates="ticker")
 
 
 class UserTickerModel(Base):
@@ -185,6 +186,9 @@ class Order(Base):
     timestamp = Column(TIMESTAMP, nullable=True)
     atr = Column(Numeric(10, 3), nullable=True)
 
+    buy_deals = relationship("Deal", back_populates="buy_order_rel", foreign_keys="[Deal.buy_order]")
+    sell_deals = relationship("Deal", back_populates="sell_order_rel", foreign_keys="[Deal.sell_order]")
+
     __table_args__ = (UniqueConstraint('orderId', name='unique_orderIdt'),)
 
 
@@ -215,6 +219,12 @@ class Deal(Base):
     ticker_id = Column(BIGINT, ForeignKey('tickers.ticker_id'), nullable=False)
     buy_order = Column(UUID, ForeignKey('orders.id'), nullable=False)
     sell_order = Column(UUID, ForeignKey('orders.id'), nullable=True)
+
+    ticker = relationship("TickerModel", back_populates="deals")
+    buy_order_rel = relationship("Order", foreign_keys=[buy_order], back_populates="buy_deals")
+    sell_order_rel = relationship("Order", foreign_keys=[sell_order], back_populates="sell_deals")
+
+    __table_args__ = (UniqueConstraint('ticker_id', 'buy_order', name='ticker_id_buy'),)
 
 
 

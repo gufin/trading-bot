@@ -10,7 +10,7 @@ from loguru import logger
 
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.models import AccountRequest, Order, OrderDirection, OrderInfo, OrderType, OrderUpdateRequest, \
-    PortfolioRequest, Ticker
+    PortfolioRequest, ReplaceOrderRequest, Ticker
 from market_loader.settings import settings
 from market_loader.utils import dict_to_float, get_uuid, make_http_request, price_to_units_and_nano
 
@@ -94,8 +94,9 @@ class MarketProcessor:
         if response.status_code == HTTPStatus.OK:
             order_model = self._convert_data_to_order(response.json(), account_id, atr)
             await self._db.add_order(order_model)
-            logger.info((f"Добавлен новый ордер ордер. Аккаунт {account_id}; тикер {ticker.name}; "
-                         f"Направление {direction.value}; Тип: {order_type.value}"))
+            logger.info(
+                (f"Добавлен новый ордер ордер {order_model.orderId}. Аккаунт {account_id}; тикер {ticker.name}; "
+                 f"Направление {direction.value}; Тип: {order_type.value}"))
             return True
         else:
             logger.critical((f"Не удалось создать ордер. Аккаунт {account_id}; тикер {ticker.name}; "
@@ -203,6 +204,8 @@ class MarketProcessor:
         url = f"{settings.base_url}{settings.cancel_order}"
         response = await self._request_with_count(url, order_cancel_request.model_dump(), 'cancel_order')
         if response.status_code == HTTPStatus.OK:
+            data = response.json()
+            print(data)
             logger.info(f"Отменен ордер {order_id}. Аккаунт {account_id}.")
             return True
         else:
@@ -216,28 +219,27 @@ class MarketProcessor:
             if result:
                 await self._db.cancel_order(order_id)
 
-    async def replace_order(self, figi: str, price: float) -> bool:
-        account_id = await self._db.get_user_account(user_id=1)
-        active_order = await self._db.get_active_order_by_figi(account_id, figi, OrderDirection.buy)
-        if active_order:
-            active_order.price = price_to_units_and_nano(price)
-            url = f"{settings.base_url}{settings.replace_order}"
-            response = await self._request_with_count(url, active_order.model_dump(), 'post_order')
-            if response.status_code == HTTPStatus.OK:
-                order_model = self._convert_data_to_order(response.json(), account_id)
-                await self._db.add_order(order_model)
-                await self._db.cancel_order(active_order.orderId)
-                logger.info(f"Обновлен (replace) ордер {order_model.orderId}. Аккаунт {account_id}.")
-                return True
-            else:
-                logger.info(f"Не удалось обновить ордер {active_order.orderId}. Аккаунт {account_id}.")
-                return False
+    async def replace_order(self, price: float, atr: float, account_id: str,
+                            active_order: ReplaceOrderRequest) -> bool:
+
+        active_order.price = price_to_units_and_nano(price)
+        url = f"{settings.base_url}{settings.replace_order}"
+        response = await self._request_with_count(url, active_order.model_dump(), 'post_order')
+        if response.status_code == HTTPStatus.OK:
+            order_model = self._convert_data_to_order(response.json(), account_id, atr)
+            await self._db.add_order(order_model)
+            await self._db.cancel_order(active_order.orderId)
+            logger.info(f"Ордер {active_order.orderId} заменен на ордер {order_model.orderId}. Аккаунт {account_id}.")
+            return True
+        else:
+            logger.info(f"Не удалось обновить ордер {active_order.orderId}. Аккаунт {account_id}.")
+            return False
 
     async def buy_limit_with_replace(self, figi: str, price: float, atr: float) -> bool:
         account_id = await self._db.get_user_account(user_id=1)
         active_order = await self._db.get_active_order_by_figi(account_id, figi, OrderDirection.buy)
         if active_order:
-            return await self.replace_order(figi, price)
+            return await self.replace_order(price, atr, account_id, active_order)
         else:
             return await self.make_order(figi, price, OrderDirection.buy, OrderType.limit, atr)
 
@@ -248,7 +250,7 @@ class MarketProcessor:
         account_id = await self._db.get_user_account(user_id=1)
         active_order = await self._db.get_active_order_by_figi(account_id, figi, OrderDirection.sell)
         if active_order:
-            return await self.replace_order(figi, price)
+            return await self.replace_order(price, atr, account_id, active_order)
         else:
             return await self.make_order(figi, price, OrderDirection.sell, OrderType.limit, atr)
 
@@ -283,7 +285,7 @@ class MarketProcessor:
 
     @staticmethod
     def round_price(price: float, ticker: Ticker) -> float:
-        return (price // ticker.min_price_increment) * ticker.min_price_increment
+        return round((price // ticker.min_price_increment) * ticker.min_price_increment, 2)
 
     async def save_current_positions(self, account_id: str, positions: list[Ticker]) -> None:
         task_id = await self._db.create_new_position_check_task(1)
@@ -300,5 +302,6 @@ class MarketProcessor:
 
     async def close_deal(self, account_id: str, ticker: Ticker):
         latest_sell_order = await self._db.get_latest_order_by_direction(account_id, ticker.figi, OrderDirection.sell)
-        latest_buy_order = await self._db.get_latest_order_by_direction(account_id, ticker.figi, OrderDirection.sell)
+        latest_buy_order = await self._db.get_latest_order_by_direction(account_id, ticker.figi, OrderDirection.buy)
+
         await self._db.update_deal(ticker.ticker_id, latest_buy_order.orderId, latest_sell_order.orderId)
