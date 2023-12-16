@@ -835,3 +835,10 @@ class BotPostgresRepository:
             df = df[column_order]
 
             return df
+
+    async def get_order_atr(self, order_id: str) -> float:
+        async with self.sessionmaker() as session:
+                result = await session.execute(
+                    select(Order.atr).where(Order.orderId == uuid.UUID(order_id))
+                )
+                return result.scalars().first()

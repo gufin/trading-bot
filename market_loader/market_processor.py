@@ -96,7 +96,7 @@ class MarketProcessor:
             await self._db.add_order(order_model)
             logger.info(
                 (f"Добавлен новый ордер ордер {order_model.orderId}. Аккаунт {account_id}; тикер {ticker.name}; "
-                 f"Направление {direction.value}; Тип: {order_type.value}"))
+                 f"количество {quantity}; цена {order.price}. Направление {direction.value}; Тип: {order_type.value}"))
             return True
         else:
             logger.critical((f"Не удалось создать ордер. Аккаунт {account_id}; тикер {ticker.name}; "
@@ -186,7 +186,8 @@ class MarketProcessor:
         url = f"{settings.base_url}{settings.update_order}"
         response = await self._request_with_count(url, order_update_request.model_dump(), 'get_order')
         if response.status_code == HTTPStatus.OK:
-            order_model = self._convert_data_to_order(response.json(), account_id)
+            atr = await self._db.get_order_atr(order_id)
+            order_model = self._convert_data_to_order(response.json(), account_id, atr)
             await self._db.update_order(order_model)
             logger.info(f"Обновлен ордер {order_id}. Аккаунт {account_id}.")
             return True
@@ -204,8 +205,6 @@ class MarketProcessor:
         url = f"{settings.base_url}{settings.cancel_order}"
         response = await self._request_with_count(url, order_cancel_request.model_dump(), 'cancel_order')
         if response.status_code == HTTPStatus.OK:
-            data = response.json()
-            print(data)
             logger.info(f"Отменен ордер {order_id}. Аккаунт {account_id}.")
             return True
         else:
@@ -239,9 +238,9 @@ class MarketProcessor:
         account_id = await self._db.get_user_account(user_id=1)
         active_order = await self._db.get_active_order_by_figi(account_id, figi, OrderDirection.buy)
         if active_order:
-            return await self.replace_order(price, atr, account_id, active_order)
-        else:
-            return await self.make_order(figi, price, OrderDirection.buy, OrderType.limit, atr)
+            #return await self.replace_order(price, atr, account_id, active_order)
+            await self.cancel_order(account_id, active_order.orderId)
+        return await self.make_order(figi, price, OrderDirection.buy, OrderType.limit, atr)
 
     async def buy_market(self, figi: str, price: float, atr: float) -> None:
         await self.make_order(figi, price, OrderDirection.buy, OrderType.market, atr)
@@ -250,9 +249,9 @@ class MarketProcessor:
         account_id = await self._db.get_user_account(user_id=1)
         active_order = await self._db.get_active_order_by_figi(account_id, figi, OrderDirection.sell)
         if active_order:
-            return await self.replace_order(price, atr, account_id, active_order)
-        else:
-            return await self.make_order(figi, price, OrderDirection.sell, OrderType.limit, atr)
+            #return await self.replace_order(price, atr, account_id, active_order)
+            await self.cancel_order(account_id, active_order.orderId)
+        return await self.make_order(figi, price, OrderDirection.sell, OrderType.limit, atr)
 
     async def sell_market(self, figi: str, price: float) -> bool:
         atr = 1
@@ -299,6 +298,7 @@ class MarketProcessor:
                 ticker = await self._db.get_ticker_by_figi(security['figi'])
                 await self.sell_market(ticker.figi, 100)
                 await self.close_deal(account_id, ticker)
+        await self.update_orders(account_id )
 
     async def close_deal(self, account_id: str, ticker: Ticker):
         latest_sell_order = await self._db.get_latest_order_by_direction(account_id, ticker.figi, OrderDirection.sell)

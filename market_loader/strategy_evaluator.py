@@ -149,11 +149,13 @@ class StrategyEvaluator:
     async def _make_orders(self, candles: dict, interval: CandleInterval, span: int, older_interval: CandleInterval,
                            older_span: int):
         logger.info("Начали выставлять ордера на покупку")
+
         prices = await self.mp.get_current_prices()
         if prices is None:
             logger.critical("Не удалось получить текущие цены")
             return
         account_id = await self.db.get_user_account(user_id=1)
+        await self.mp.update_orders(account_id)
         portfolio = await self.mp.get_portfolio(account_id)
         for ticker_id in candles:
             main_params = await self._get_rebound_main_params(ticker_id, interval, candles, span, older_interval,
@@ -213,6 +215,12 @@ class StrategyEvaluator:
         for position in current_positions:
             latest_order = await self.db.get_latest_order_by_direction(account_id, position.figi,
                                                                        OrderDirection.buy)
+            if latest_order is None:
+                result = await self.mp.sell_market(position.figi, 1)
+                if result:
+                    message = f"<b>Открыта ошибочная позиция. Продали по рынку. Простите, милорд</b> #{position.name}"
+                    await send_telegram_message(message)
+                    continue
             base_price = latest_order.initialOrderPrice / latest_order.lotsRequested
             price = self.mp.round_price(base_price + 3 * latest_order.atr, position)
             if (
@@ -221,7 +229,8 @@ class StrategyEvaluator:
             ):
                 await self.db.add_deal(position.ticker_id, latest_order.orderId)
                 if position not in db_positions:
-                    message = f"<b>Открыта позиция</b> #{position.name}"
+                    message = (f"<b>Открыта позиция</b> #{position.name}. Количество в последнем ордере "
+                               f"{latest_order.lotsRequested}")
                     await send_telegram_message(message)
                 if prices[position.figi] <= base_price - latest_order.atr*1.5:
                     result = await self.mp.sell_market(position.figi, price)
