@@ -205,6 +205,7 @@ class MarketProcessor:
         url = f"{settings.base_url}{settings.cancel_order}"
         response = await self._request_with_count(url, order_cancel_request.model_dump(), 'cancel_order')
         if response.status_code == HTTPStatus.OK:
+            await self._db.cancel_order(order_id)
             logger.info(f"Отменен ордер {order_id}. Аккаунт {account_id}.")
             return True
         else:

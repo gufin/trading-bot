@@ -196,25 +196,14 @@ class StrategyEvaluator:
         logger.info("Начали проверку активных ордеров")
         account_id = await self.db.get_user_account(user_id=1)
         db_positions = await self.db.get_latest_positions(1)
-        current_positions_raw = await self.mp.get_positions(account_id)
-        current_positions = []
-        for security in current_positions_raw['securities']:
-            if security['instrumentType'] == 'share':
-                ticker = await self.db.get_ticker_by_figi(security['figi'])
-                current_positions.append(ticker)
+        current_positions = await self._get_current_positions(account_id)
         prices = await self.mp.get_current_prices()
-        active_orders = await self.mp.get_orders()
-        active_figi = [
-            order['figi']
-            for order in active_orders["orders"]
-            if order['executionReportStatus'] == 'EXECUTION_REPORT_STATUS_NEW'
-        ]
+        active_figi = await self._get_figi_in_active_orders()
         if prices is None:
             logger.critical("Не удалось получить текущие цены")
             return
         for position in current_positions:
-            latest_order = await self.db.get_latest_order_by_direction(account_id, position.figi,
-                                                                       OrderDirection.buy)
+            latest_order = await self.db.get_latest_order_by_direction(account_id, position.figi, OrderDirection.buy)
             if latest_order is None:
                 result = await self.mp.sell_market(position.figi, 1)
                 if result:
@@ -260,7 +249,22 @@ class StrategyEvaluator:
                     await self.mp.close_deal(account_id, position)
                     message = f"<b>Закрыта позиция</b> #{position.name}"
                     await send_telegram_message(message)
-
-
         await self.mp.save_current_positions(account_id, current_positions)
         logger.info("Закончили проверку активных ордеров")
+
+    async def _get_current_positions(self, account_id: str) -> list:
+        current_positions_raw = await self.mp.get_positions(account_id)
+        current_positions = []
+        for security in current_positions_raw['securities']:
+            if security['instrumentType'] == 'share':
+                ticker = await self.db.get_ticker_by_figi(security['figi'])
+                current_positions.append(ticker)
+        return current_positions
+
+    async def _get_figi_in_active_orders(self) -> list:
+        active_orders = await self.mp.get_orders()
+        return [
+            order['figi']
+            for order in active_orders["orders"]
+            if order['executionReportStatus'] == 'EXECUTION_REPORT_STATUS_NEW'
+        ]

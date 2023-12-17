@@ -50,7 +50,7 @@ if __name__ == "__main__":
         "logs/debug.log",
         level="DEBUG",
         format="{time} | {level} | {module}:{function}:{line} | {message}",
-        rotation="30 KB",
+        rotation="30000 KB",
         compression="zip",
     )
     asyncio.run(main())
