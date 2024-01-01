@@ -6,6 +6,7 @@ from market_loader.infrasturcture.postgres_repository import BotPostgresReposito
 from market_loader.market_processor import MarketProcessor
 from market_loader.models import CandleInterval, Ema, ExtendedReboundParam, MainReboundParam, OrderDirection, OrderType
 from market_loader.settings import settings
+from market_loader.tcs_market_processor import TCSMarketProcessor
 from market_loader.utils import dict_to_float, get_market_message, get_rebound_message, get_start_time, \
     need_for_calculation, \
     send_telegram_message
@@ -13,7 +14,7 @@ from market_loader.utils import dict_to_float, get_market_message, get_rebound_m
 
 class StrategyEvaluator:
 
-    def __init__(self, db: BotPostgresRepository, mp: MarketProcessor):
+    def __init__(self, db: BotPostgresRepository, mp: TCSMarketProcessor):
         self.db = db
         self.mp = mp
         current_time = datetime.now(timezone.utc)
@@ -219,7 +220,7 @@ class StrategyEvaluator:
                 await self.db.add_deal(position.ticker_id, latest_order.orderId)
                 if position not in db_positions:
                     message = (f"<b>Открыта позиция</b> #{position.name}. Количество в последнем ордере "
-                               f"{latest_order.lotsRequested}")
+                               f"{latest_order.lotsRequested} по цене {latest_order.initialOrderPrice }")
                     await send_telegram_message(message)
                 if prices[position.figi] <= base_price - latest_order.atr*1.5:
                     result = await self.mp.sell_market(position.figi, price)

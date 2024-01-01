@@ -593,12 +593,21 @@ class BotPostgresRepository:
 
     async def get_active_order_by_figi(self, account_id: str, figi: str, direction: OrderDirection) -> Optional[
         ReplaceOrderRequest]:
+        order_direction = None
+        if type(direction.value) == int:
+            if direction.value == 1:
+                order_direction = 'ORDER_DIRECTION_BUY'
+            else:
+                order_direction = 'ORDER_DIRECTION_SELL'
+        else:
+            order_direction = direction.value
+
         async with self.sessionmaker() as session:
             stmt = (select(Order)
                     .where(Order.figi == figi,
                            Order.accountId == account_id,
                            Order.executionReportStatus == 'EXECUTION_REPORT_STATUS_NEW',
-                           Order.direction == direction.value)
+                           Order.direction == order_direction)
                     .order_by(desc(Order.timestamp)))
             result = await session.execute(stmt)
             if order := result.scalars().first():

@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from market_loader.infrasturcture.entities import get_sessionmaker
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.market_processor import MarketProcessor
+from market_loader.tcs_market_processor import TCSMarketProcessor
 
 # import uvloop  # running only linux
 
@@ -21,4 +22,5 @@ storage = RedisStorage2(os.getenv("REDIS_HOST"), os.getenv("REDIS_PORT"), db=5)
 dp = Dispatcher(bot, loop=loop, storage=storage)
 sessionmaker = get_sessionmaker()
 db = BotPostgresRepository(sessionmaker)
-mp = MarketProcessor(db=db, sandbox_mode=True)
+old_mp = MarketProcessor(db=db, sandbox_mode=True)
+mp = TCSMarketProcessor(db=db, sandbox_mode=True)

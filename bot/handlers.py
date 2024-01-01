@@ -7,7 +7,6 @@ from aiogram import types
 from bot.loader import bot, db, dp, mp
 from bot.texts import button_texts, message_texts
 from bot.utils import format_active_orders_message, format_portfolio_message
-from market_loader.models import OrderDirection
 
 
 @dp.message_handler(commands="get_deals")
@@ -96,7 +95,7 @@ async def sell_all(message: types.Message) -> None:
 async def show_active_orders(message: types.Message) -> None:
     account_id = await db.get_user_account(user_id=1)
     await mp.update_orders(account_id)
-    active_orders = await mp.get_orders()
+    active_orders = await mp.get_orders(account_id)
     text = await format_active_orders_message(active_orders)
     await bot.send_message(
         message.chat.id,

@@ -10,6 +10,7 @@ from market_loader.infrasturcture.entities import get_sessionmaker
 from market_loader.infrasturcture.postgres_repository import BotPostgresRepository
 from market_loader.loader import MarketDataLoader
 from market_loader.strategy_evaluator import StrategyEvaluator
+from market_loader.tcs_market_processor import TCSMarketProcessor
 from market_loader.technical_indicators_calculator import TechnicalIndicatorsCalculator
 
 sessionmaker = get_sessionmaker()
@@ -18,7 +19,8 @@ db = BotPostgresRepository(sessionmaker)
 loader = MarketDataLoader(db=db)
 ti_calculator = TechnicalIndicatorsCalculator(db=db)
 mp = MarketProcessor(db, settings.send_box_mode)
-strategy_evaluator = StrategyEvaluator(db=db,mp=mp)
+tcs_mp = TCSMarketProcessor(db, settings.send_box_mode)
+strategy_evaluator = StrategyEvaluator(db=db, mp=tcs_mp )
 
 
 async def main():

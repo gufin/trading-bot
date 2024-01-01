@@ -28,3 +28,4 @@ pydantic
 pandas
 loguru
 sqlalchemy
+tinkoff-investments

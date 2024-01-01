@@ -6,6 +6,7 @@ import httpx
 import pytz
 from httpx import Response
 from loguru import logger
+from tinkoff.invest.grpc.common_pb2 import MoneyValue
 from tzlocal import get_localzone
 
 from market_loader.models import Candle, CandleInterval, MainReboundParam, OrderDirection, OrderType, Price, \
@@ -16,6 +17,12 @@ from market_loader.settings import settings
 def dict_to_float(num_dict: dict) -> float:
     units = int(num_dict["units"])
     nano = int(num_dict["nano"])
+    return units + nano / 1e9
+
+
+def money_to_float(money: MoneyValue) -> float:
+    units = int(money.units)
+    nano = int(money.nano)
     return units + nano / 1e9
 
 
